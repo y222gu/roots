@@ -148,7 +148,7 @@ class EdgeDetector():
         return edges_sobel
 
 if __name__ == "__main__":
-    image_path = os.path.join(os.getcwd(),"SQR6b.png")
+    image_path = os.path.join(os.getcwd(),"images","SQR6b.png")
 
     image = cv2.imread(image_path)
     edge_detector = EdgeDetector(image)
