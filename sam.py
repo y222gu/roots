@@ -4,6 +4,10 @@ from segment_anything import SamAutomaticMaskGenerator, SamPredictor, sam_model_
 import matplotlib.pyplot as plt
 import os
 import torch
+from scipy.signal import find_peaks
+from scipy.signal import find_peaks
+from scipy.ndimage import gaussian_filter
+from skimage.feature import peak_local_max
 class EdgeDetector():
     def __init__(self, image):
         image = np.array(image)
@@ -53,7 +57,7 @@ class EdgeDetector():
         # save the figure
         plt.savefig(os.path.join(os.getcwd(), "masked_image.png"))
         plt.close(fig)
-        return pil_image
+        return masks
 
     def box_prompt_mask_generate(self, x_low=950, y_low=180, x_high=1400, y_high=620):
         input_box = np.array([x_low, y_low, x_high, y_high])
@@ -119,38 +123,54 @@ class EdgeDetector():
 
     # a function to find the edges of the image
     def find_edges(self):
-            
-        # Convert the image to grayscale
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                # Assuming 'self.image' contains your image data
+        image = self.image[:, :, 1]
 
-        # Apply Gaussian Blur to reduce noise
-        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        # Normalize the image
+        image = cv2.normalize(image, None, 0, 255, cv2.NORM_MINMAX)
 
-        # Apply Sobel Edge Detection (X and Y direction)
-        sobelx = cv2.Sobel(blurred, cv2.CV_64F, 1, 0, ksize=5)
-        sobely = cv2.Sobel(blurred, cv2.CV_64F, 0, 1, ksize=5)
-        edges_sobel = cv2.sqrt(cv2.add(cv2.pow(sobelx, 2), cv2.pow(sobely, 2)))
+        # Apply Gaussian blur to smooth the image
+        image = cv2.GaussianBlur(image, (21, 21), 0)
 
-        # Normalize the Sobel output to the range [0, 255]
-        sobel_normalized = cv2.normalize(edges_sobel, None, 0, 255, cv2.NORM_MINMAX)
+        # Find local maxima in the smoothed image
+        # Apply a threshold to only consider significant peaks
+        threshold_abs = 0.85 * np.max(image)  # adjust threshold for significant peaks
 
-        # Convert the normalized image to uint8 for proper display
-        sobel_normalized = np.uint8(sobel_normalized)
+        # Use peak_local_max to get local maxima positions
+        local_max = peak_local_max(image, min_distance=20, threshold_abs=threshold_abs)
 
-        # adjust the brightness of the image
-        sobel_normalized = cv2.convertScaleAbs(sobel_normalized, alpha=3, beta=0)
+        # Plot the surface plot
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        x = np.arange(0, image.shape[1], 1)
+        y = np.arange(0, image.shape[0], 1)
+        X, Y = np.meshgrid(x, y)
+        ax.plot_surface(X, Y, image, cmap='viridis')
 
-        # Optionally, you can apply a manual threshold to keep only the brightest edges
-        edges_canny = cv2.threshold(sobel_normalized, 50, 255, cv2.THRESH_BINARY)[1]
+        # Highlight the local maxima on the plot
+        ax.scatter(local_max[:, 1], local_max[:, 0], image[local_max[:, 0], local_max[:, 1]], color='r', s=50)
+        print("the number of local maxima is: ", len(local_max))
 
+        plt.show()
 
-        plt.imsave(os.path.join(os.getcwd(), "sobel_edge_detection.png"), sobel_normalized, cmap='gray')
-        return edges_sobel
+        # Print the (x, y) positions of the significant local maxima
+        print("Significant local maxima positions (x, y):")
+        for peak in local_max:
+            print(f"({peak[1]}, {peak[0]}) - Value: {image[peak[0], peak[1]]}")
 
+        # plot the dots on the original image
+        plt.figure()
+        plt.imshow(self.image)
+        plt.scatter(local_max[:, 1], local_max[:, 0], color='r', s=50)
+        plt.show()
+
+        return local_max
+
+    
 if __name__ == "__main__":
-    image_path = os.path.join(os.getcwd(),"images","SQR6b.png")
+    image_path = os.path.join(os.getcwd(),"images","/Users/yifeigu/Documents/Siobhan_Lab/roots/images/Truc_cells.png")
 
     image = cv2.imread(image_path)
     edge_detector = EdgeDetector(image)
-    edge_detector.find_edges()
-    # pil_image = edge_detector.auto_mask_generate()
+    # edge_detector.find_edges()
+    pil_image = edge_detector.auto_mask_generate()
