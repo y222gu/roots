@@ -174,8 +174,8 @@ def apply_mask(image, mask):
 
 def predict_inner_outer_masks(input_folder):
 
-    # # inner endd
-    inner_model_path = r'C:\Users\Root Project\Documents\maskrcnn1\training runs\run 50 10e\maskrcnnweights.pth'
+    # # inner endo
+    inner_model_path = r".\inner_maskrcnnweights.pth"  # path to your saved model
     inner_num_classes = 2
     inner_input_folder = os.path.join(input_folder, 'DAPI_cropped_normalized')
     inner_output_folder = os.path.join(input_folder, 'inner_masks')
@@ -184,7 +184,7 @@ def predict_inner_outer_masks(input_folder):
     process_images(0.1, model, inner_input_folder, inner_output_folder, device)
 
     # # outer endo
-    outer_model_path = r'C:\Users\Root Project\Documents\maskrcnn1\training runs\run 3 8e\maskrcnnweights.pth'  # path to your saved model
+    outer_model_path = r'.\outer_maskrcnnweights.pth'  # path to your saved model
     outer_num_classes = 2  # background + endodermis
     outer_input_folder = os.path.join(input_folder, 'DAPI_cropped_normalized')  # folder containing images to predict on
     outer_output_folder = os.path.join(input_folder, 'outer_masks')  # folder to save

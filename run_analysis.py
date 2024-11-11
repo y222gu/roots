@@ -7,17 +7,17 @@ from get_mean_intensity import get_mean_intensity
 
 
 if __name__ == "__main__":
-    # # Set the input and output folders
-    # input_folder = r'C:\Users\Root Project\Box\Carney Lab Shared\Data\C10\Dustin\ROOTS-Images from C10\20240715-19_TAMERA_PLATES_1-3\20240715-19_automated_3-plates\Plate 1'
+    # Set the input and output folders
+    input_folder = r'C:\Users\Root Project\Box\Carney Lab Shared\Data\C10\Dustin\ROOTS-Images from C10\20240715-19_TAMERA_PLATES_1-3\20240715-19_automated_3-plates\Plate 1'
     
-    # # Call the function to sort and clean the filenames
-    # output_folder = sort_and_clean_filenames(input_folder)
-    output_folder = r'C:\Users\Root Project\Box\Carney Lab Shared\Data\C10\Dustin\ROOTS-Images from C10\20240715-19_TAMERA_PLATES_1-3\20240715-19_automated_3-plates\Plate 3_processed'
-    # # crop the center of the images out
-    # crop_images_with_trained_YOLO(output_folder)
+    # Call the function to sort and clean the filenames
+    output_folder = sort_and_clean_filenames(input_folder)
 
-    # # Normalize the images
-    # normalize_images(output_folder)
+    # crop the center of the images out
+    crop_images_with_trained_YOLO(output_folder)
+
+    # Normalize the images
+    normalize_images(output_folder)
 
     # Predict inner and outer masks
     predict_inner_outer_masks(output_folder)

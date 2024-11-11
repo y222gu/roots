@@ -168,7 +168,7 @@ class EdgeDetector():
 
     
 if __name__ == "__main__":
-    image_path = os.path.join(os.getcwd(),"images","/Users/yifeigu/Documents/Siobhan_Lab/roots/images/Truc_cells.png")
+    image_path = os.path.join(os.getcwd(),"images","Truc_cells.png")
 
     image = cv2.imread(image_path)
     edge_detector = EdgeDetector(image)

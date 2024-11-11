@@ -6,8 +6,8 @@ import json
 # Function to crop images based on YOLO predictions from DAPI channel
 def crop_images_with_trained_YOLO(input_folder):
 
-    # Most recent trained model path
-    model_path = r'C:\Users\Root Project\Documents\yolov2\training_runs\train_yolov8\yolov8_endodermis3\weights\best.pt'
+    # Most recent trained model path in the weights folder
+    model_path = r".\weights\YOLO.pt"
     model = YOLO(model_path)
 
     # Dictionary to store annotations
