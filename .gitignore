@@ -1,0 +1,4 @@
+roots_venv/
+*.pth
+sam2/
+*.pt

@@ -39,3 +39,7 @@ def sort_and_clean_filenames(input_folder):
     print("File sorting and renaming complete.")
 
     return output_folder
+
+if __name__ == "__main__":
+    input_folder = os.path.join(os.getcwd(), "aerenchyma_segmentation", "data","Aerenchyma_T22_P1_YOLOv8_annotation","labels","train")
+    sort_and_clean_filenames(input_folder)
