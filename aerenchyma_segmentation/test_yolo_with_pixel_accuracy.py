@@ -90,7 +90,7 @@ def draw_masks(image, pred_mask, gt_mask, title):
 
     # Add legend items
     items = [
-        ("Human Annotated (Magenta)", (0, 255, 255)),
+        ("Human Annotated (Yellow)", (0, 255, 255)),
         ("Model Predicted (Blue)", (255, 0, 0)),
         ("Overlap (Green)", (0, 255, 0)),
     ]
