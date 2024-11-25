@@ -14,13 +14,13 @@ class EdgeDetector():
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
         self.image = image
-        model_path = os.path.join(os.getcwd(), "sam_vit_b_01ec64.pth")
+        model_path = os.path.join(os.getcwd(), "aerenchyma_segmentation","weights","sam_vit_b_01ec64.pth")
         self.sam = sam_model_registry["vit_b"](checkpoint=model_path)
         if torch.cuda.is_available():
             self.sam.to('cuda')
 
     def auto_mask_generate(self):
-        generator = SamAutomaticMaskGenerator(model=self.sam)
+        generator = SamAutomaticMaskGenerator(model=self.sam,points_per_side=10, pred_iou_thresh=0.86, stability_score_thresh=0.92, crop_n_layers=1, crop_n_points_downscale_factor=2)
         masks = generator.generate(self.image)
 
         px = 1/plt.rcParams['figure.dpi']  # pixel in inches
@@ -168,7 +168,7 @@ class EdgeDetector():
 
     
 if __name__ == "__main__":
-    image_path = os.path.join(os.getcwd(),"images","Truc_cells.png")
+    image_path = os.path.join(os.getcwd(),"G2_DAPI.jpg")
 
     image = cv2.imread(image_path)
     edge_detector = EdgeDetector(image)

@@ -15,7 +15,7 @@ def sort_and_clean_filenames(input_folder):
     # Loop through all files in the input folder
     for filename in os.listdir(input_folder):
         # Process only image files
-        if filename.lower().endswith(('.tif', '.tiff', '.jpg', '.jpeg', '.png')):
+        if filename.lower().endswith(('.tif', '.tiff', '.jpg', '.jpeg', '.png', '.txt')):
             print(f"Processing {filename}")
 
             # Extract image name and keep the name as A1, A2 ...
@@ -30,7 +30,7 @@ def sort_and_clean_filenames(input_folder):
                 continue
 
             # Prepare new filename and destination paths
-            new_filename = f"{sample_name}_{channel}.tif"
+            new_filename = f"{sample_name}_{channel}.txt"
 
             # Copy to stain and image name folders
             source_path = os.path.join(input_folder, filename)
@@ -41,5 +41,5 @@ def sort_and_clean_filenames(input_folder):
     return output_folder
 
 if __name__ == "__main__":
-    input_folder = os.path.join(os.getcwd(), "aerenchyma_segmentation", "data","Aerenchyma_T22_P1_YOLOv8_annotation","labels","train")
+    input_folder = os.path.join(os.getcwd(), "aerenchyma_segmentation", "data","train" ,"labels")
     sort_and_clean_filenames(input_folder)

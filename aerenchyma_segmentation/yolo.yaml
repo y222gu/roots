@@ -1,0 +1,8 @@
+path: C:\Users\Yifei\Documents\roots\aerenchyma_segmentation\data_for_segmentation  # Path to this file
+train: C:\Users\Yifei\Documents\roots\aerenchyma_segmentation\data_for_segmentation\images\train  # Path to training images
+val: C:\Users\Yifei\Documents\roots\aerenchyma_segmentation\data_for_segmentation\images\val  # Path to validation images
+
+nc: 1                        # Number of classes
+names: ['Aerenchyma']  # Class names
+
+# annotations: C:\Users\Yifei\Documents\roots\aerenchyma_segmentation\data\annotations\updated_annotation.json  # Path to your COCO JSON annotations file
