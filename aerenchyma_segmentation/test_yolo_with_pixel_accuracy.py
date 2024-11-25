@@ -5,6 +5,7 @@ import os
 import numpy as np
 import cv2
 from ultralytics import YOLO
+from skimage.measure import label, regionprops
 
 def load_ground_truth_mask(annotation_file, image_shape):
     # Parse YOLO annotations and create a binary mask
@@ -62,19 +63,19 @@ def draw_masks(image, pred_mask, gt_mask, title):
 
     # Create masks
     overlap_mask = np.logical_and(pred_mask, gt_mask).astype(np.uint8)  # Overlap (green)
-    pred_only_mask = np.logical_and(pred_mask, ~gt_mask).astype(np.uint8)  # Predicted only (yellow)
-    gt_only_mask = np.logical_and(~pred_mask, gt_mask).astype(np.uint8)  # Ground truth only (blue)
+    pred_only_mask = np.logical_and(pred_mask, np.logical_not(overlap_mask)).astype(np.uint8)  # Predicted only (yellow)
+    gt_only_mask = np.logical_and(gt_mask, np.logical_not(overlap_mask)).astype(np.uint8)  # Ground truth only (blue)
+
 
     # Convert binary masks to 3-channel
+    pred_only_mask_color = np.stack([pred_only_mask * 255, pred_only_mask * 0, pred_only_mask * 0], axis=-1)  # Yellow
+    gt_only_mask_color = np.stack([gt_only_mask * 0, gt_only_mask * 255, gt_only_mask * 255], axis=-1)  # Blue
     overlap_mask_color = np.stack([overlap_mask * 0, overlap_mask * 255, overlap_mask * 0], axis=-1)  # Green
-    pred_only_mask_color = np.stack([pred_only_mask * 0, pred_only_mask * 255, pred_only_mask * 255], axis=-1)  # Yellow
-    gt_only_mask_color = np.stack([gt_only_mask * 255, gt_only_mask * 0, gt_only_mask * 0], axis=-1)  # Blue
 
     # Apply the masks with transparency
-    overlay = cv2.addWeighted(overlay, 1, overlap_mask_color, alpha, 0)
     overlay = cv2.addWeighted(overlay, 1, pred_only_mask_color, alpha, 0)
     overlay = cv2.addWeighted(overlay, 1, gt_only_mask_color, alpha, 0)
-
+    overlay = cv2.addWeighted(overlay, 1, overlap_mask_color, alpha, 0)
     # Side-by-side comparison
     combined_image = np.hstack((overlay, image))
 
@@ -89,8 +90,8 @@ def draw_masks(image, pred_mask, gt_mask, title):
 
     # Add legend items
     items = [
-        ("Human Annotated (Blue)", (255, 0, 0)),
-        ("Model Predicted (Yellow)", (0, 255, 255)),
+        ("Human Annotated (Magenta)", (0, 255, 255)),
+        ("Model Predicted (Blue)", (255, 0, 0)),
         ("Overlap (Green)", (0, 255, 0)),
     ]
 
@@ -114,6 +115,22 @@ def draw_masks(image, pred_mask, gt_mask, title):
     return legend_overlay
 
 
+def count_polygons(mask):
+    """
+    Count the number of distinct polygons in a binary mask.
+    """
+    labeled_mask = label(mask)  # Label connected regions
+    return len(regionprops(labeled_mask))  # Count regions
+
+def compare_polygon_counts(pred_mask, gt_mask):
+    """
+    Compare the number of polygons between predicted and ground truth masks.
+    """
+    pred_count = count_polygons(pred_mask)
+    gt_count = count_polygons(gt_mask)
+    difference = abs(pred_count - gt_count)
+    return pred_count, gt_count, difference
+
 
 if __name__ == '__main__':
     # Load the YOLO model
@@ -125,44 +142,48 @@ if __name__ == '__main__':
     output_path = os.path.join(os.getcwd(), "aerenchyma_segmentation", "data_for_segmentation", "images", "val_predictions")
     os.makedirs(output_path, exist_ok=True)
 
-    # Process each image
-    for image_file in os.listdir(val_images_path):
-        image_path = os.path.join(val_images_path, image_file)
-        image = cv2.imread(image_path)
-        if image is None:
-            print(f"Failed to load {image_path}")
-            continue
+# Process each image
+for image_file in os.listdir(val_images_path):
+    image_path = os.path.join(val_images_path, image_file)
+    image = cv2.imread(image_path)
+    if image is None:
+        print(f"Failed to load {image_path}")
+        continue
 
-        # Run YOLO inference
-        results = model.predict(image, imgsz=1024, conf=0.2, task='segment', verbose=False)
-        masks = results[0].masks
+    # Run YOLO inference
+    results = model.predict(image, imgsz=1024, conf=0.2, task='segment', verbose=False)
+    masks = results[0].masks
 
-        # Load ground truth mask
-        label_file = os.path.splitext(image_file)[0] + '.txt'
-        annotations_path = os.path.join(labels_path, label_file)
-        gt_mask = load_ground_truth_mask(annotations_path, image.shape)
+    # Load ground truth mask
+    label_file = os.path.splitext(image_file)[0] + '.txt'
+    annotations_path = os.path.join(labels_path, label_file)
+    gt_mask = load_ground_truth_mask(annotations_path, image.shape)
 
-        pred_mask_combined = np.zeros_like(gt_mask)
-        if masks is not None:
-            for mask in masks.data:
-                mask = (mask.cpu().numpy() > 0.5).astype(np.uint8)
-                mask_resized = cv2.resize(mask, (image.shape[1], image.shape[0]), interpolation=cv2.INTER_NEAREST)
-                pred_mask_combined = np.logical_or(pred_mask_combined, mask_resized).astype(np.uint8)
+    # Combine predicted masks
+    pred_mask_combined = np.zeros_like(gt_mask)
+    if masks is not None:
+        for mask in masks.data:
+            mask = (mask.cpu().numpy() > 0.5).astype(np.uint8)
+            mask_resized = cv2.resize(mask, (image.shape[1], image.shape[0]), interpolation=cv2.INTER_NEAREST)
+            pred_mask_combined = np.logical_or(pred_mask_combined, mask_resized).astype(np.uint8)
 
-        # Calculate pixel accuracy
-        sensitivity = calculate_pixel_sensitivity(pred_mask_combined, gt_mask)
-        title = f"Pixel-level Sensitivity: {sensitivity:.2%}"
+    # Count polygons in predicted and ground truth masks
+    pred_count, gt_count, diff_count = compare_polygon_counts(pred_mask_combined, gt_mask)
+    print(f"{image_file}: Predicted Polygons = {pred_count}, Ground Truth Polygons = {gt_count}, Difference = {diff_count}")
 
-        specificity = calculate_pixel_specificity(pred_mask_combined, gt_mask)
-        title += f" | Specificity: {specificity:.2%}"
+    # Calculate pixel sensitivity and specificity
+    sensitivity = calculate_pixel_sensitivity(pred_mask_combined, gt_mask)
+    specificity = calculate_pixel_specificity(pred_mask_combined, gt_mask)
+    title = f"Pixel-level Sensitivity: {sensitivity:.2%} | Specificity: {specificity:.2%}"
 
-        # Draw masks and combine
-        combined_image = draw_masks(image, pred_mask_combined, gt_mask, title)
+    # Draw masks and create combined image
+    combined_image = draw_masks(image, pred_mask_combined, gt_mask, title)
 
-        # Save the combined image
-        save_path = os.path.join(output_path, f"comparison_{image_file}")
-        cv2.imwrite(save_path, combined_image)
+    # Save the combined image
+    save_path = os.path.join(output_path, f"comparison_{image_file}")
+    cv2.imwrite(save_path, combined_image)
 
-        # Plot and save confusion matrix
-        cm_save_path = os.path.join(output_path, f"{os.path.splitext(image_file)[0]}_matrices.png")
-        plot_confusion_matrix(gt_mask, pred_mask_combined, cm_save_path)
+    # Plot and save confusion matrix
+    cm_save_path = os.path.join(output_path, f"{os.path.splitext(image_file)[0]}_matrices.png")
+    plot_confusion_matrix(gt_mask, pred_mask_combined, cm_save_path)
+
