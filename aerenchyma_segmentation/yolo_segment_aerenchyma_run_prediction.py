@@ -2,16 +2,18 @@ from ultralytics import YOLO
 import cv2
 import os
 import numpy as np
+import onnxruntime as ort
 
-
-
-def run_inference_and_overlay(model, image):
+def segment_aerenchyma(model, image):
     
     # Run inference
     results = model.predict(image, imgsz=1024, conf=0.2, task='segment', verbose=False)
     
     # Extract segmentation masks
     masks = results[0].masks  # List of masks (one per detected object)
+    
+    # combine masks into one
+    combined_masks = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
     
     if masks is not None:
         for mask in masks.data:  # Iterate over each mask
@@ -20,13 +22,18 @@ def run_inference_and_overlay(model, image):
             
             # Resize mask to match image dimensions
             mask_resized = cv2.resize(mask, (image.shape[1], image.shape[0]), interpolation=cv2.INTER_LANCZOS4)
+            combined_masks = np.logical_or(combined_masks, mask_resized).astype(np.uint8)
 
-    return mask_resized
+    mask_area = np.sum(combined_masks)
 
+    return combined_masks, mask_area
 
 if __name__ == '__main__':
     # Load the trained YOLOv8 model
     model = YOLO(r'C:\Users\Yifei\Documents\roots\aerenchyma_segmentation\runs\yolov8_segmentation3\weights\best.pt')  # Replace with your trained model path
+
+    # model_name = os.path.join(os.getcwd(),'aerenchyma_segmentation','runs','yolov8_segmentation3','weights','best.onnx')
+    # model = ort.InferenceSession(model_name)
 
     # Path to validation images
     image_folder = os.path.join(os.getcwd(),'aerenchyma_segmentation','data_for_segmentation', 'images', 'val_text')
@@ -46,7 +53,7 @@ if __name__ == '__main__':
             continue
 
         # Run inference and overlay masks on the image
-        mask_resized = run_inference_and_overlay(model, image)
+        mask_resized, mask_area = segment_aerenchyma(model, image)
 
         # Colorize mask and overlay on the image
         colored_mask = np.zeros_like(image, dtype=np.uint8)

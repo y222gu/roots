@@ -66,7 +66,6 @@ def draw_masks(image, pred_mask, gt_mask, title):
     pred_only_mask = np.logical_and(pred_mask, np.logical_not(overlap_mask)).astype(np.uint8)  # Predicted only (yellow)
     gt_only_mask = np.logical_and(gt_mask, np.logical_not(overlap_mask)).astype(np.uint8)  # Ground truth only (blue)
 
-
     # Convert binary masks to 3-channel
     pred_only_mask_color = np.stack([pred_only_mask * 255, pred_only_mask * 0, pred_only_mask * 0], axis=-1)  # Yellow
     gt_only_mask_color = np.stack([gt_only_mask * 0, gt_only_mask * 255, gt_only_mask * 255], axis=-1)  # Blue
