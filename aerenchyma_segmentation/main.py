@@ -1,8 +1,8 @@
 import os
 import cv2
 import numpy as np
-from aerenchyma_segmentation.root_area_detection_unet import segment_root
-from aerenchyma_segmentation.yolo_segment_aerenchyma_run_prediction import segment_aerenchyma
+from root_area_detection_unet import segment_root
+from yolo_segment_aerenchyma_run_prediction import segment_aerenchyma
 from ultralytics import YOLO
 from torchvision import models, transforms
 import onnxruntime as ort
@@ -39,10 +39,11 @@ if __name__ == "__main__":
         # Visualize the overlay of the aerenchyma_mask with blue at opacity of 0.3 on the original image
         # (root_mask - aerenchyma_mask) with magenta at opacity of 0.3 on the original image
         overlay = image.copy()
-        root_mask_color = np.stack([root_mask * 255, root_mask * 0, root_mask * 255], axis=-1)  # Yellow
+        root_mask_subtracted =  np.logical_and(root_mask, np.logical_not(aerenchyma_mask)).astype(np.uint8)
+        root_mask_color = np.stack([root_mask_subtracted * 255, root_mask_subtracted * 0, root_mask_subtracted * 255], axis=-1)  # Red
         aerenchyma_mask_color = np.stack([aerenchyma_mask * 255, aerenchyma_mask * 0, aerenchyma_mask * 0], axis=-1)  # Blue
         overlay = cv2.addWeighted(overlay, 1, root_mask_color, 0.3, 0)
-        overlay = cv2.addWeighted(overlay, 1, aerenchyma_mask_color, 0.3, 0)
+        overlay = cv2.addWeighted(overlay, 1, aerenchyma_mask_color, 0.6, 0)
         combined_image = np.hstack((overlay, image))
 
         #Add title at the top of the image
@@ -52,7 +53,7 @@ if __name__ == "__main__":
         thickness = max(1, int(font_scale * 2))  # Scaled thickness
         spacing = int(legend_height * 0.2)  # Spacing between legend items
 
-        title = f"Aerenchyma/Root Ratio: {aerenchyma_ratio * 100:.2f}%"
+        title = f"Aerenchyma/Root Ratio: {aerenchyma_ratio * 100}%"
         text_size = cv2.getTextSize(title, cv2.FONT_HERSHEY_SIMPLEX, font_scale * 1.5, thickness)[0]
         text_x = (title_overlay.shape[1] - text_size[0]) // 2
         text_y = text_size[1] + spacing
