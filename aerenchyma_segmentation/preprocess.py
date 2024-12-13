@@ -48,7 +48,7 @@ def log_scaling(image_np):
     return log_image
 
 
-def preprocess_16bit_image(image_path, method='adaptive'):
+def preprocess_image(image_path, method='adaptive'):
     """
     Preprocess a single 16-bit image with a selected method.
     """
@@ -74,10 +74,13 @@ def preprocess_16bit_image(image_path, method='adaptive'):
     return processed_image_8bit
 
 
-def preprocess_dataset_16bit(input_dir, output_dir, method='adaptive'):
+def preprocess_dataset(input_dir, output_dir, method='adaptive'):
     """
     Preprocess all 16-bit images in a directory and save the preprocessed versions as 8-bit images.
     """
+    if output_dir is None:
+        output_dir = input_dir + '_preprocessed'
+
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -88,7 +91,7 @@ def preprocess_dataset_16bit(input_dir, output_dir, method='adaptive'):
                 img_path = os.path.join(subdir, file)
 
                 # Preprocess the image
-                processed_image = preprocess_16bit_image(img_path, method=method)
+                processed_image = preprocess_image(img_path, method=method)
 
                 # Save the preprocessed image
                 output_subdir = subdir.replace(input_dir, output_dir)  # Maintain subdirectory structure
@@ -96,17 +99,17 @@ def preprocess_dataset_16bit(input_dir, output_dir, method='adaptive'):
                     os.makedirs(output_subdir)
 
                 output_path = os.path.join(output_subdir, file)
-                Image.fromarray(processed_image).save(output_path)  # Save as 8-bit image
+                # if the image already exists, overwrite it
+                cv2.imwrite(output_path, processed_image)
 
     print(f"Preprocessing complete. Processed images saved in {output_dir}")
 
 
 if __name__ == '__main__':
-    input_dir = r"C:\Users\Yifei\Documents\roots\aerenchyma_segmentation\data_for_segmentation\images\train"  # Input directory of images
-    output_dir = r"C:\Users\Yifei\Documents\roots\aerenchyma_segmentation\data_for_segmentation\images\train_normalized"  # Directory to save preprocessed images
+    input_dir = r"C:\Users\Yifei\Documents\roots\aerenchyma_segmentation\data_for_segmentation\images\val_"  # Input directory of images
 
     # Choose preprocessing method: 'adaptive', 'clip', 'clahe', 'log'
     method = 'adaptive'  # Change this to experiment with different methods
 
     # Preprocess all images
-    preprocess_dataset_16bit(input_dir, output_dir, method=method)
+    preprocess_dataset(input_dir, method=method)

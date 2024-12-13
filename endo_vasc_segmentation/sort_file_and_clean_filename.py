@@ -30,7 +30,7 @@ def sort_and_clean_filenames(input_folder):
                 continue
 
             # Prepare new filename and destination paths
-            new_filename = f"{sample_name}_{channel}.txt"
+            new_filename = f"{sample_name}_{channel}.tif"
 
             # Copy to stain and image name folders
             source_path = os.path.join(input_folder, filename)
@@ -41,5 +41,5 @@ def sort_and_clean_filenames(input_folder):
     return output_folder
 
 if __name__ == "__main__":
-    input_folder = os.path.join(os.getcwd(), "aerenchyma_segmentation", "data","train" ,"labels")
+    input_folder = os.path.join(os.getcwd(), "aerenchyma_segmentation", "data_for_segmentation","images_to_be_added")
     sort_and_clean_filenames(input_folder)
