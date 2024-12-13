@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Define the folder containing the images
-image_folder = os.path.join(os.getcwd(),'aerenchyma_segmentation','data_for_segmentation', 'images', 'val_normalized')
+image_folder = os.path.join(os.getcwd(),'aerenchyma_segmentation','data_for_segmentation', 'images', 'val_text')
 
 # Get all image paths in the folder
 image_paths = [os.path.join(image_folder, f) for f in os.listdir(image_folder) if f.endswith('.tif')]
