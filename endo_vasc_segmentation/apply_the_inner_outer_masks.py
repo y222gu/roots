@@ -102,12 +102,15 @@ def get_masked_images(input_folder):
     """Process images with corresponding outer and inner masks."""
     outer_mask_folder = os.path.join(input_folder, "outer_masks")
     inner_mask_folder = os.path.join(input_folder, "inner_masks")
+    DAPI_folder = os.path.join(input_folder, "DAPI_cropped")
     GFP_folder = os.path.join(input_folder, "GFP_cropped")
     TRITC_folder = os.path.join(input_folder, "TRITC_cropped")
     
+    DAPI_results_endo = os.path.join(input_folder, "DAPI_results_endo")
     GFP_results_endo = os.path.join(input_folder, "GFP_results_endo")
     TRITC_results_endo = os.path.join(input_folder, "TRITC_results_endo")
 
+    DAPI_results_vasc = os.path.join(input_folder, "DAPI_results_vasc")
     GFP_results_vasc = os.path.join(input_folder, "GFP_results_vasc")
     TRITC_results_vasc = os.path.join(input_folder, "TRITC_results_vasc")
 
@@ -123,9 +126,11 @@ def get_masked_images(input_folder):
     if not os.path.exists(TRITC_results_vasc):
         os.makedirs(TRITC_results_vasc)
 
+    process_images(DAPI_folder, outer_mask_folder, inner_mask_folder, DAPI_results_endo, option = "endo")
     process_images(GFP_folder, outer_mask_folder, inner_mask_folder, GFP_results_endo, option = "endo")
     process_images(TRITC_folder, outer_mask_folder, inner_mask_folder, TRITC_results_endo, option = "endo")
 
+    process_images(DAPI_folder, outer_mask_folder, inner_mask_folder, DAPI_results_vasc, option = "vasc")
     process_images(GFP_folder, outer_mask_folder, inner_mask_folder, GFP_results_vasc, option = "vasc")
     process_images(TRITC_folder, outer_mask_folder, inner_mask_folder, TRITC_results_vasc, option = "vasc")
 
