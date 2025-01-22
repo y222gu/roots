@@ -8,7 +8,7 @@ from get_mean_intensity import get_mean_intensity
 
 if __name__ == "__main__":
     # Set the input and output folders
-    input_folder = r'C:\Users\Root Project\Box\Carney Lab Shared\Data\C10\Dustin\ROOTS-Images from C10\20240715-19_TAMERA_PLATES_1-3\20240715-19_automated_3-plates\Plate 1'
+    input_folder = r'C:\Users\yifei\Box\Carney Lab Shared\Data\C10\Dustin\ROOTS-Images from C10\20240715-19_TAMERA_PLATES_1-3\test\Plate 1'
     
     # Call the function to sort and clean the filenames
     output_folder = sort_and_clean_filenames(input_folder)

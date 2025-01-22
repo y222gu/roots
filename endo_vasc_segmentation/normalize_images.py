@@ -37,7 +37,7 @@ def calculate_mean_brightness(folder):
     return total_brightness / total_pixels if total_pixels > 0 else 0
 
 def normalize_images(input_folder):
-    reference_folder = r"C:\Users\Root Project\Pictures\test3\pics norm"
+    reference_folder = os.path.join(os.path.dirname(__file__), "pics_norm")
     dapi_folder = os.path.join(input_folder, "DAPI_cropped")
     output_folder =  os.path.join(input_folder, "DAPI_cropped_normalized")
 

@@ -7,7 +7,7 @@ import json
 def crop_images_with_trained_YOLO(input_folder):
 
     # Most recent trained model path in the weights folder
-    model_path = r".\weights\YOLO.pt"
+    model_path = os.path.join(os.path.dirname(__file__), "weights", "YOLO.pt")
     model = YOLO(model_path)
 
     # Dictionary to store annotations
