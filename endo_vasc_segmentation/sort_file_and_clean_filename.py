@@ -19,9 +19,9 @@ def sort_and_clean_filenames(input_folder):
             print(f"Processing {filename}")
 
             # Extract image name and keep the name as A1, A2 ...
-            sample_name = filename.split('_')[0]
-            if "ROI" in sample_name:
-                sample_name = sample_name.split("ROI")[0]
+            # sample_name = filename.split('_')[0]
+            # if "ROI" in sample_name:
+            #     sample_name = sample_name.split("ROI")[0]
 
             # Determine the stain from the filename
             channel = next((s for s in channel_folders if s in filename), None)
@@ -30,7 +30,8 @@ def sort_and_clean_filenames(input_folder):
                 continue
 
             # Prepare new filename and destination paths
-            new_filename = f"{sample_name}_{channel}.tif"
+            # new_filename = f"{sample_name}_{channel}.tif"
+            new_filename = filename
 
             # Copy to stain and image name folders
             source_path = os.path.join(input_folder, filename)

@@ -37,7 +37,7 @@ def calculate_mean_brightness(folder):
     return total_brightness / total_pixels if total_pixels > 0 else 0
 
 def normalize_images(input_folder):
-    reference_folder = r"C:\Users\Root Project\Pictures\test3\pics norm"
+    reference_folder = r".\endo_vasc_segmentation\pics norm"
     dapi_folder = os.path.join(input_folder, "DAPI_cropped")
     output_folder =  os.path.join(input_folder, "DAPI_cropped_normalized")
 
@@ -67,5 +67,5 @@ def normalize_images(input_folder):
 
 if __name__ == "__main__":
 
-    input_folder = r"C:\Users\Root Project\Box\Carney Lab Shared\Data\C10\Dustin\ROOTS-Images from C10\20240715-19_TAMERA_PLATES_1-3\20240715-19_automated_3-plates\plate_2_processed"  # Second input folder, the images in this folder will be normalized
+    input_folder = r'C:\Users\Yifei\Box\Carney Lab Shared\Data\C10\Dustin\ROOTS-Images from C10\Kevin_Cropped_Images\All_Folders_Compiled_for_test_processed'  # Second input folder, the images in this folder will be normalized
     normalize_images(input_folder)

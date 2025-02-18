@@ -7,7 +7,12 @@ import json
 def crop_images_with_trained_YOLO(input_folder):
 
     # Most recent trained model path in the weights folder
-    model_path = r".\weights\YOLO.pt"
+    model_path = r".\endo_vasc_segmentation\weights\YOLO.pt"
+
+    # Check if the model file exists
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"No such file or directory: '{model_path}'")
+    
     model = YOLO(model_path)
 
     # Dictionary to store annotations
@@ -90,5 +95,5 @@ def crop_images_with_trained_YOLO(input_folder):
 
 # Run the function
 if __name__ == '__main__':
-    input_folder = r'C:\Users\Root Project\Box\Carney Lab Shared\Data\C10\Dustin\ROOTS-Images from C10\20240715-19_TAMERA_PLATES_1-3\20240715-19_automated_3-plates\plate_2_processed'
+    input_folder = r'C:\Users\Yifei\Box\Carney Lab Shared\Data\C10\Dustin\ROOTS-Images from C10\Kevin_Cropped_Images\All_Folders_Compiled_for_test_processed'
     crop_images_with_trained_YOLO(input_folder)

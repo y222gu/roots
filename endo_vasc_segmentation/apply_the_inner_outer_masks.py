@@ -137,6 +137,6 @@ def get_masked_images(input_folder):
 
 if __name__ == "__main__":
     human = False
-    input_image_folder = r'C:\Users\Root Project\Box\Carney Lab Shared\Data\C10\Dustin\ROOTS-Images from C10\20240715-19_TAMERA_PLATES_1-3\20240715-19_automated_3-plates\plate_2_processed'
+    input_image_folder = r'C:\Users\Yifei\Box\Carney Lab Shared\Data\C10\Dustin\ROOTS-Images from C10\Kevin_Cropped_Images\All_Folders_Compiled_for_test_processed'
     get_masked_images(input_image_folder)
     print("All images processed!")
