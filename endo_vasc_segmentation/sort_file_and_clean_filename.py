@@ -19,9 +19,17 @@ def sort_and_clean_filenames(input_folder):
             print(f"Processing {filename}")
 
             # Extract image name and keep the name as A1, A2 ...
-            # sample_name = filename.split('_')[0]
-            # if "ROI" in sample_name:
-            #     sample_name = sample_name.split("ROI")[0]
+            sample_name = filename.split('_')[0]
+            if "ROI" in sample_name:
+                sample_name = sample_name.split("ROI")[0]
+
+            # for Kevin's images
+            # sample_name_1 = filename.split('_')[0]
+            # if "ROI" in sample_name_1:
+            #     sample_name_1 = sample_name_1.split("ROI")[0]
+            # sample_name_2 = filename.split('_')[1]
+            # sample_name_3 = filename.split(']')[1]
+            # sample_name = sample_name_1 + "_" + sample_name_2 + "_" + sample_name_3
 
             # Determine the stain from the filename
             channel = next((s for s in channel_folders if s in filename), None)

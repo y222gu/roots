@@ -61,6 +61,7 @@ def process_images(input_image_folder, outer_mask_folder, inner_mask_folder, out
         base_name = "_".join(os.path.splitext(image_name)[0].split("_")[:1])
         # add "_" to the end of the base name
         base_name = base_name + "_"
+        
         # Find corresponding outer and inner mask files
         outer_mask_path = None
         inner_mask_path = None
@@ -113,6 +114,12 @@ def get_masked_images(input_folder):
     DAPI_results_vasc = os.path.join(input_folder, "DAPI_results_vasc")
     GFP_results_vasc = os.path.join(input_folder, "GFP_results_vasc")
     TRITC_results_vasc = os.path.join(input_folder, "TRITC_results_vasc")
+
+    if not os.path.exists(DAPI_results_endo):
+        os.makedirs(DAPI_results_endo)
+
+    if not os.path.exists(DAPI_results_vasc):
+        os.makedirs(DAPI_results_vasc)
 
     if not os.path.exists(GFP_results_endo):
         os.makedirs(GFP_results_endo)

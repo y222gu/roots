@@ -4,17 +4,21 @@ from normalize_images import normalize_images
 from predict_inner_outer_masks import predict_inner_outer_masks
 from apply_the_inner_outer_masks import get_masked_images
 from get_mean_intensity import get_mean_intensity
+from crop_images_for_tomatos import crop_images_with_yolo_annotations
 
 
 if __name__ == "__main__":
     # Set the input and output folders
     input_folder = r'C:\Users\Yifei\Box\Carney Lab Shared\Data\C10\Dustin\ROOTS-Images from C10\Kevin_Cropped_Images\All_Folders_Compiled_for_test'
-    
+    input_annotation_folder = r'C:\Users\Yifei\Box\Carney Lab Shared\Data\C10\Dustin\ROOTS-Images from C10\Kevin_Cropped_Images\Cropped_Tomato_Endodermis1_YOLO\obj_Annotation1_data'
     # Call the function to sort and clean the filenames
     output_folder = sort_and_clean_filenames(input_folder)
 
-    # crop the center of the images out
+    # # crop the center of the images out
     crop_images_with_trained_YOLO(output_folder)
+
+    # for Kevin's images
+    # crop_images_with_yolo_annotations(output_folder, input_annotation_folder)
 
     # Normalize the images
     normalize_images(output_folder)

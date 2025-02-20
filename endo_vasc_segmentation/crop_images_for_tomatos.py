@@ -63,7 +63,7 @@ def crop_images_with_yolo_annotations(input_image_folder, input_annotation_folde
             # Add annotations for the DAPI image
             annotations[filename] = bounding_boxes
 
-            # Load GFP and TRITC images if they exist
+            # # Load GFP and TRITC images if they exist
             for channel_name, channel_folder, output_folder in [("GFP", GFP_input_folder, GFP_output_folder), ("TRITC", TRITC_input_folder, TRITC_output_folder)]:
                 channel_filename = filename.replace("DAPI", channel_name)
                 channel_image_path = os.path.join(channel_folder, channel_filename)
@@ -81,6 +81,29 @@ def crop_images_with_yolo_annotations(input_image_folder, input_annotation_folde
                         cropped_channel = channel_image[y1:y2, x1:x2]
                         cropped_channel_filename = f"{os.path.splitext(channel_filename)[0]}_cropped_{label}.tif"
                         cv2.imwrite(os.path.join(output_folder, cropped_channel_filename), cropped_channel, [cv2.IMWRITE_TIFF_COMPRESSION, 1])
+
+            # for Kevin's images
+            # find corresponding GFP and TRITC images
+            # base_name = filename.split("_")[0] + "_" + filename.split("_")[1]
+            # # loop through files and find the file with the same base name in gfp and tritc folders
+            # for channel_folder, output_folder in [(GFP_input_folder, GFP_output_folder), (TRITC_input_folder, TRITC_output_folder)]:
+            #     for channel_filename in os.listdir(channel_folder):
+            #         if base_name in channel_filename:
+            #             channel_image_path = os.path.join(channel_folder, channel_filename)
+            #             # Load the channel image, do not convert to grayscale
+            #             channel_image = cv2.imread(channel_image_path, cv2.IMREAD_UNCHANGED)
+
+            #             # Crop the GFP/TRITC image using the same bounding boxes
+            #             for box_info in bounding_boxes:
+            #                 x1, y1, x2, y2 = box_info["bbox"]
+            #                 label = box_info["label"]
+
+            #                 # Crop the channel image and save it
+            #                 cropped_channel = channel_image[y1:y2, x1:x2]
+            #                 cropped_channel_filename = f"{os.path.splitext(channel_filename)[0]}_cropped.tif"
+            #                 cv2.imwrite(os.path.join(output_folder, cropped_channel_filename), cropped_channel, [cv2.IMWRITE_TIFF_COMPRESSION, 1])
+            #             print('find the file')                                                                                     
+
 
     # Save all annotations to a JSON file
     # annotations_file = os.path.join(input_folder, "cropping_annotations.json")

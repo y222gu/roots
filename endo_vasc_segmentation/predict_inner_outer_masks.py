@@ -126,7 +126,7 @@ def process_images(threshold, model, input_folder, output_folder, device, min_ma
             # Save the masked image in TIFF format
             masked_image.save(os.path.join(output_folder, f"{base_name}_masked.tif"), format="TIFF")
             # # save the mask
-            # np.save(os.path.join(output_folder, f"{base_name}_mask.npy"), resized_mask)
+            np.save(os.path.join(output_folder, f"{base_name}_mask.npy"), resized_mask)
 
             print("Image size:", image.shape)
             print("Mask size:", resized_mask.shape)
