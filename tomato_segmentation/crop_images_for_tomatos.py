@@ -114,6 +114,6 @@ def crop_images_with_yolo_annotations(input_image_folder, input_annotation_folde
 
 # Run the function
 if __name__ == '__main__':
-    input_image_folder = r'C:\Users\Yifei\Box\Carney Lab Shared\Data\C10\Dustin\ROOTS-Images from C10\Kevin_Cropped_Images\All_Folders_Compiled_for_test_processed'
-    input_annotation_folder = r'C:\Users\Yifei\Box\Carney Lab Shared\Data\C10\Dustin\ROOTS-Images from C10\Kevin_Cropped_Images\Cropped_Tomato_Endodermis1_YOLO\obj_Annotation1_data'
+    input_image_folder = r'C:\Users\Yifei\Documents\roots\tomato_segmentation\data\Folder1_processed'
+    input_annotation_folder = r'C:\Users\Yifei\Documents\roots\tomato_segmentation\data\FOLDER_1_YOLO'
     crop_images_with_yolo_annotations(input_image_folder, input_annotation_folder)

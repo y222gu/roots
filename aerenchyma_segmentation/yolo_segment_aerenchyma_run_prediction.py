@@ -32,9 +32,6 @@ if __name__ == '__main__':
     # Load the trained YOLOv8 model
     model = YOLO(r'C:\Users\Yifei\Documents\roots\aerenchyma_segmentation\runs\yolov8_segmentation3\weights\best.pt')  # Replace with your trained model path
 
-    # model_name = os.path.join(os.getcwd(),'aerenchyma_segmentation','runs','yolov8_segmentation3','weights','best.onnx')
-    # model = ort.InferenceSession(model_name)
-
     # Path to validation images
     image_folder = os.path.join(os.getcwd(),'aerenchyma_segmentation','data_for_segmentation', 'images', 'val_text')
     output_path = os.path.join(os.getcwd(),"aerenchyma_segmentation","data_for_segmentation","images",'val_text_aerenchyma_segmented')

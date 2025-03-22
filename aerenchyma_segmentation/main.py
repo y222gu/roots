@@ -9,22 +9,30 @@ import onnxruntime as ort
 
 
 if __name__ == "__main__":
-    # Load the trained YOLOv8 model
-    model_for_aerenchyma = YOLO(r'C:\Users\Yifei\Documents\roots\aerenchyma_segmentation\runs\yolov8_segmentation3\weights\best.pt')  # Replace with your trained model path
-    # model_name_for_aerenchyma = os.path.join(os.getcwd(),'aerenchyma_segmentation','runs','yolov8_segmentation3','weights','best.onnx')
-    # model_for_aerenchyma = ort.InferenceSession(model_name_for_aerenchyma)
 
+    ########################################################
+    # Input Parameters
+    ########################################################
+    image_folder = os.path.join(os.getcwd(),'aerenchyma_segmentation','data_for_segmentation', 'images', 'val_text')
+    output_path = os.path.join(os.getcwd(),"aerenchyma_segmentation","data_for_segmentation","images", "val_text_predictions")
+    aerenchyma_model_path =os.path.join(os.getcwd(),'aerenchyma_segmentation','data_for_segmentation', 'runs', 'yolov8_segmentation3','weights','best.pt')
+
+    
+    ########################################################
+    # Analyze the images
+    ########################################################
+    model_for_aerenchyma = YOLO(aerenchyma_model_path)  # Replace with your trained model path
     model_for_root = models.detection.maskrcnn_resnet50_fpn(pretrained=True)
     model_for_root.eval()
+
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
+
     # Define a transformation to normalize the input image
     transform = transforms.Compose([
         transforms.ToTensor(),
     ])
 
-    image_folder = os.path.join(os.getcwd(),'aerenchyma_segmentation','data_for_segmentation', 'images', 'val_text')
-    output_path = os.path.join(os.getcwd(),"aerenchyma_segmentation","data_for_segmentation","images", "val_text_predictions")
-    os.makedirs(output_path, exist_ok=True)
-    
     list_of_image_files = os.listdir(image_folder)
 
     for image_file in list_of_image_files:
