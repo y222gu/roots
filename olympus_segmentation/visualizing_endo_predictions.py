@@ -139,37 +139,39 @@ def visualize_endo_predictions(model, channels, dataset, output_folder, manual_a
 
     # plot true average intensity vs predicted average intensity and fit  a line 
     if manual_annotation == 'True':
-        plot_df = results_df.dropna(subset=['true_average_intensity', 'predicted_average_intensity'])
-        if not plot_df.empty:
-            true_vals = plot_df['true_average_intensity'].astype(float)
-            pred_vals = plot_df['predicted_average_intensity'].astype(float)
-            r, p_value = pearsonr(true_vals, pred_vals)
-            print(f"Pearson r = {r:.3f}, p = {p_value:.3e}")
+        for ch in ["TRITC", "FITC"]:
+            ch_df = results_df[results_df['channel'] == ch].dropna(subset=['true_average_intensity', 'predicted_average_intensity'])
+            if not ch_df.empty:
+                true_vals = ch_df['true_average_intensity'].astype(float)
+                pred_vals = ch_df['predicted_average_intensity'].astype(float)
+                r, p_value = pearsonr(true_vals, pred_vals)
+                print(f"Channel {ch} - Pearson r = {r:.3f}, p = {p_value:.3e}")
 
-            plt.figure(figsize=(8, 6))
-            plt.scatter(true_vals, pred_vals, c='blue', label='Data points')
-            plt.plot([0,255], [0,255], "--", c='k', linewidth=1) 
-            plt.ylim(0, true_vals.max() * 1.1)
-            plt.xlim(0, pred_vals.max() * 1.1)
-            
-            # Fit a line to the data points if more than one point exists
-            if len(true_vals) > 1:
-                slope, intercept = np.polyfit(true_vals, pred_vals, 1)
-                x_fit = np.array([true_vals.min(), true_vals.max()])
-                y_fit = slope * x_fit + intercept
-                plt.plot(x_fit, y_fit, color='red', label=f'Fit line: y={slope:.2f}x+{intercept:.2f}')
-            
-            # add pearson correlation coefficient to the plot
-            plt.text(0.05, 0.95, f'Pearson r = {r:.3f}', transform=plt.gca().transAxes, fontsize=12, verticalalignment='top', color='k')
-            plt.text(0.05, 0.90, f'p-value = {p_value:.2e}', transform=plt.gca().transAxes, fontsize=12, verticalalignment='top', color='k')
-            plt.xlabel('True Average Intensity')
-            plt.ylabel('Predicted Average Intensity')
-            plt.title('True vs Predicted Average Intensity')
-            plt.legend()
-            plt.tight_layout()
-            overlay_path = os.path.join(output_folder, "prediction", "true_predicted_correlation_fit.png")
-            plt.savefig(overlay_path, bbox_inches='tight')
-            plt.close()
+                plt.figure(figsize=(8, 6))
+                plt.scatter(true_vals, pred_vals, c='blue', label='Data points')
+                plt.plot([0, 255], [0, 255], "--", c='k', linewidth=1)
+                plt.ylim(true_vals.min() * 1.1, true_vals.max() * 1.1)
+                plt.xlim(pred_vals.min() * 1.1, pred_vals.max() * 1.1)
+                
+                # Fit a line if there are multiple data points
+                if len(true_vals) > 1:
+                    slope, intercept = np.polyfit(true_vals, pred_vals, 1)
+                    x_fit = np.array([pred_vals.min()*1.1, pred_vals.max()*1.1])
+                    y_fit = slope * x_fit + intercept
+                    plt.plot(x_fit, y_fit, color='red', label=f'Fit line: y={slope:.2f}x+{intercept:.2f}')
+                
+                plt.text(0.05, 0.95, f'Pearson r = {r:.3f}', transform=plt.gca().transAxes,
+                    fontsize=12, verticalalignment='top', color='k')
+                plt.text(0.05, 0.90, f'p-value = {p_value:.2e}', transform=plt.gca().transAxes,
+                    fontsize=12, verticalalignment='top', color='k')
+                plt.xlabel('True Average Intensity')
+                plt.ylabel('Predicted Average Intensity')
+                plt.title(f'True vs Predicted Average Intensity ({ch})')
+                plt.legend()
+                plt.tight_layout()
+                overlay_path = os.path.join(output_folder, "prediction", f"true_predicted_correlation_fit_{ch}.png")
+                plt.savefig(overlay_path, bbox_inches='tight')
+                plt.close()
 
 # --- build RGB overlays ---
 def make_overlay(mask):
