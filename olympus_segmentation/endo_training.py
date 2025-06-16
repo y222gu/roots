@@ -65,7 +65,7 @@ def train_model(train_loader, val_loader, output_dir,
         model.train()
         running_train_loss = 0.0
 
-        for images, masks, sample_id in train_loader:
+        for images, masks, sample_id, images_original in train_loader:
             images = images.to(device)
             masks  = masks.to(device).unsqueeze(1).float()
 
@@ -89,7 +89,7 @@ def train_model(train_loader, val_loader, output_dir,
         total_iou        = 0.0
 
         with torch.no_grad():
-            for images, masks, sample_id in val_loader:
+            for images, masks, sample_id, images_original in val_loader:
                 images = images.to(device)
                 masks  = masks.to(device).unsqueeze(1).float()
 
