@@ -7,9 +7,9 @@ import matplotlib.pyplot as plt
 import cv2
 import numpy as np
 from torch.utils.data import DataLoader
-from olympus_segmentation.dataset import MultiChannelSegDataset
+from olympus_segmentation.aere_dataset import MultiChannelSegDataset
 from olympus_segmentation.transforms import get_train_transforms, get_val_transforms
-from  olympus_segmentation.visualizing_predictions import visualize_all_predictions_with_manual_annotation
+from  olympus_segmentation.visualizing_aere_predictions import visualize_all_predictions_with_manual_annotation
 
 # --------------------- Training Function with Early Stopping ---------------------
 
@@ -139,7 +139,7 @@ def train_model(train_loader, val_loader, output_dir,
 if __name__ == '__main__':
     # Set your directories.
     channels = ['DAPI', 'FITC', 'TRITC']
-    model_path =os.path.join(os.path.dirname(__file__), "weights", 'endo_model_for_olympus.pth')
+    model_path =os.path.join(os.path.dirname(__file__), "weights", 'aere_model_for_olympus.pth')
     train_data_folder = r'C:\Users\Yifei\Documents\new_endo_model\train'        # Contains subfolders: image, annotation.
     val_data_folder = r'C:\Users\Yifei\Documents\new_endo_model\val'         # Contains subfolders: image, annotation.          # Contains subfolders: image, annotation.
     output_folder = r'C:\Users\Yifei\Documents\new_endo_model\results'          # Directory to save the best model.

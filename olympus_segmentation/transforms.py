@@ -10,11 +10,17 @@ def get_train_transforms():
         A.RandomRotate90(p=0.5),
         A.Normalize(),
         ToTensorV2(),
-    ])
+    ],
+        additional_targets={
+            "image_original": "image_original"
+        })
 
 def get_val_transforms():
     return A.Compose([
         A.Resize(1024, 1024),
         A.Normalize(),
         ToTensorV2(),
-    ])
+    ],
+        additional_targets={
+            "image_original": "image_original"
+        })

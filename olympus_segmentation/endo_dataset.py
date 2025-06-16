@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 
 # --------------------- Dataset Class ---------------------
 class MultiChannelSegDataset(Dataset):
-    def __init__(self, data_dir, channels, transform=None):
+    def __init__(self, data_dir, channels, transform=None, manual_annotation = 'True'):
         """
         Args:
             image_dir (str): Path to the main data folder that contains three subfolders: DAPI, GFP, TRITC.
@@ -15,7 +15,11 @@ class MultiChannelSegDataset(Dataset):
             transform: Optional albumentations transform to be applied on the images and masks.
         """
         self.image_dir = os.path.join(data_dir, 'image') # Assuming images are in the same folder as annotations
-        self.annotation_dir = os.path.join(data_dir, 'annotation')
+        self.manual_annotation = manual_annotation
+        if manual_annotation == 'True':
+            self.annotation_dir = os.path.join(data_dir, 'annotation')
+        else:
+            self.annotation_dir = None
         self.transform = transform
         self.channels = channels
 
@@ -24,15 +28,27 @@ class MultiChannelSegDataset(Dataset):
 
         # loaf all the image stacks
         self.data = []
-        for sample_id in self.sample_ids:
-            image_stack = self.load_an_image_stack(sample_id)
-            annotation = self.yolo_polygon_to_mask(sample_id, image_stack)
-            if image_stack is None or annotation is None:
-                print(f"Skipping sample {sample_id} due to missing data.")
-                continue
+        if manual_annotation == 'True':
+            for sample_id in self.sample_ids:
+                image_stack = self.load_an_image_stack(sample_id)
+                annotation = self.yolo_polygon_to_mask(sample_id, image_stack)
+                if image_stack is None or annotation is None:
+                    print(f"Skipping sample {sample_id} due to missing data.")
+                    continue
+                self.data.append((image_stack, annotation, sample_id))
 
-            self.data.append((image_stack, annotation, sample_id))
+        else:
+            for sample_id in self.sample_ids:
+                image_stack = self.load_an_image_stack(sample_id)
+                if image_stack is None:
+                    print(f"Skipping sample {sample_id} due to missing data.")
+                    continue
+                self.data.append((image_stack, sample_id))
+        
         print(f"Found {len(self.data)} samples")
+        # print all sample ids of data
+        print("Sample IDs:", [d[2] for d in self.data] if manual_annotation == 'True' else [d[1] for d in self.data])
+
 
 
     def load_an_image_stack(self, sample_id):
@@ -64,24 +80,40 @@ class MultiChannelSegDataset(Dataset):
         return np.stack(imgs, axis=-1)
 
     def __len__(self):
-        return len(self.sample_ids)
+        return len(self.data)
 
     def __getitem__(self, idx):
         data = self.data[idx]
-        image, mask, sample_id = data
 
-        image = self.gamma_correction(image, gamma=0.2)
-        image = image.astype(np.uint8)  # Ensure mask is in uint8 format
-        image = cv2.normalize(image, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
-        image = cv2.GaussianBlur(image, (5, 5), 0)
+        if self.manual_annotation == 'True':
+            image_original, mask, sample_id = data
 
-        # Apply optional transforms (data augmentation, normalization, etc.)
-        if self.transform:
-            augmented = self.transform(image=image, mask=mask)
-            image = augmented['image']
-            mask = augmented['mask']
+            # preprocess
+            image = self.gamma_correction(image_original, gamma=0.2)
+            image = image.astype(np.uint8)
+            image = cv2.normalize(image, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
+            image = cv2.GaussianBlur(image, (5, 5), 0)
 
-        return image, mask, sample_id
+            # to tensor
+            if self.transform:
+                augmented = self.transform(image=image, mask=mask)
+                image = augmented['image']
+                mask = augmented['mask']
+            return image, mask, sample_id, image_original
+        
+        else:
+            image_original, sample_id = data
+
+            # preprocess
+            image = self.gamma_correction(image_original, gamma=0.2)
+            image = image.astype(np.uint8)
+            image = cv2.normalize(image, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
+            image = cv2.GaussianBlur(image, (5, 5), 0)
+            # to tensor
+            if self.transform:
+                augmented = self.transform(image=image)
+                image = augmented['image']
+            return image, sample_id, image_original
 
     def yolo_polygon_to_mask(self, sample_id, image):
         """
@@ -100,7 +132,7 @@ class MultiChannelSegDataset(Dataset):
         # find the label file for this sample
         label_path = None
         for fn in os.listdir(self.annotation_dir):
-            if fn.endswith('.txt') and sample_id in fn:
+            if fn.endswith('.txt') and os.path.splitext(fn)[0] == sample_id:
                 label_path = os.path.join(self.annotation_dir, fn)
                 break
         if label_path is None:
@@ -204,85 +236,3 @@ class MultiChannelSegDataset(Dataset):
             plt.axis("off")
         plt.tight_layout()
         plt.show()
-
-
-class MultiChannelSegDataset_no_annotation(Dataset):
-    def __init__(self, data_dir, channels, transform=None):
-        """
-        Args:
-            image_dir (str): Path to the main data folder that contains three subfolders: DAPI, GFP, TRITC.
-            annotation_dir (str): Path to the folder with annotation files.
-            transform: Optional albumentations transform to be applied on the images and masks.
-        """
-        self.image_dir = os.path.join(data_dir, 'image') # Assuming images are in the same folder as annotations
-        self.transform = transform
-        self.channels = channels
-
-        # Get the all subfolder names in the image directory as sample id.
-        self.sample_ids = [f for f in os.listdir(self.image_dir ) if os.path.isdir(os.path.join(self.image_dir , f))]
-
-        # loaf all the image stacks
-        self.data = []
-        for sample_id in self.sample_ids:
-            image_stack = self.load_an_image_stack(sample_id)
-
-            self.data.append((image_stack, sample_id))
-        print(f"Found {len(self.data)} samples")
-
-
-    def load_an_image_stack(self, sample_id):
-        """
-        Load images from three channels (DAPI, GFP, TRITC) for a given sample ID.
-        Returns a stacked image of shape (height, width, 3).
-        """
-        # load the images from the subfolders with the sample_id.
-        image_subfolder = os.path.join(self.image_dir, sample_id)
-        if not os.path.exists(image_subfolder):
-            raise FileNotFoundError(f"Image directory not found: {image_subfolder}")
-        
-        # List of channels to load.
-        imgs = []
-        # For each channel, search for a file that contains the channel name.
-        for ch in self.channels:
-            found_file = None
-            for file in os.listdir(image_subfolder):
-                if ch in file:
-                    found_file = file
-                    break
-            if not found_file:
-                return None  # No file found for this channel
-            img_path = os.path.join(image_subfolder, found_file)
-            img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-            if img is None:
-                return None  # Image could not be read
-            imgs.append(img)
-        return np.stack(imgs, axis=-1)
-
-    def __len__(self):
-        return len(self.sample_ids)
-
-    def __getitem__(self, idx):
-        image, sample_id = self.data[idx]
-
-        image = self.gamma_correction(image, gamma=0.2)
-        image = image.astype(np.uint8)  # Ensure mask is in uint8 format
-        image = cv2.normalize(image, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
-        image = cv2.GaussianBlur(image, (5, 5), 0)
-
-        # Apply optional transforms (data augmentation, normalization, etc.)
-        if self.transform:
-            augmented = self.transform(image=image)
-            image = augmented['image']
-
-        return image, sample_id
-
-    def gamma_correction(self, image, gamma=1.0):
-
-        # build lookup table [0..255] → [0..255]^(1/gamma)
-        table = np.array([
-            ((i / 255.0) ** gamma) * 255
-            for i in np.arange(256)
-        ]).astype("uint8")
-
-        img_norm = cv2.LUT(image, table)
-        return img_norm

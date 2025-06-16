@@ -2,9 +2,9 @@ import os
 import torch
 import segmentation_models_pytorch as smp
 from torch.utils.data import DataLoader
-from dataset import MultiChannelSegDataset_no_annotation
+from endo_dataset import MultiChannelSegDataset
 from transforms import get_val_transforms
-from visualizing_predictions import visualize_all_predictions_without_manual_annotation
+from visualizing_endo_predictions import visualize_endo_predictions
 
 # --------------------- Main ---------------------
 if __name__ == '__main__':
@@ -17,7 +17,7 @@ if __name__ == '__main__':
         os.makedirs(output_folder)
  
     # initialize the dataset with transforms.
-    val_dataset = MultiChannelSegDataset_no_annotation(data_folder, channels, transform=get_val_transforms())
+    val_dataset = MultiChannelSegDataset(data_folder, channels, transform=get_val_transforms(), manual_annotation='False')
     val_loader = DataLoader(val_dataset, batch_size=2, shuffle=False, num_workers=4)
 
     # load the best model for inference.
@@ -32,5 +32,5 @@ if __name__ == '__main__':
     
     # Plot predictions on samples.
     results_folder = os.path.join(output_folder)
-    visualize_all_predictions_without_manual_annotation(best_model, channels, val_dataset, results_folder)
+    visualize_endo_predictions(best_model, channels, val_dataset, results_folder, manual_annotation='False', alpha=0.5)
     print("All predictions plotted and saved.")
