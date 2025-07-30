@@ -9,7 +9,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 from aere_dataset import BinarySegDataset
 from transforms import get_val_transforms
-from olympus_segmentation.visualizing_aere_with_binary_models import visualize_all_predictions_with_manual_annotation
+from olympus_segmentation.aere.visualizing_aere_with_binary_models import visualize_all_predictions_with_manual_annotation
 from torchvision import models
 
 # --------------------- Main ---------------------
