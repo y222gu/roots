@@ -50,5 +50,5 @@ def sort_and_clean_filenames(input_folder):
     return output_folder
 
 if __name__ == "__main__":
-    input_folder = r'C:\Users\Yifei\Documents\roots\tomato_segmentation\data\Folder4'
+    input_folder = r'C:\Users\Yifei\Documents\roots\tomato_segmentation\data\train\image'
     sort_and_clean_filenames(input_folder)
