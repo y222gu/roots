@@ -16,8 +16,8 @@ if __name__ == '__main__':
     # Set your directories.
     channels = ['DAPI', 'FITC', 'TRITC']
     model_path =os.path.join(os.path.dirname(__file__), "weights", 'endo_model_for_olympus.pth')
-    val_data_folder = r'C:\Users\Yifei\Documents\new_endo_model\test'          # Contains subfolders: image, annotation.          # Contains subfolders: image, annotation.
-    output_folder = r'C:\Users\Yifei\Documents\new_endo_model\results'          # Directory to save the best model.
+    val_data_folder = r'C:\Users\Yifei\Documents\new_endo_model_training\test'          # Contains subfolders: image, annotation.          # Contains subfolders: image, annotation.
+    output_folder = r'C:\Users\Yifei\Documents\new_endo_model_training\results'          # Directory to save the best model.
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
  

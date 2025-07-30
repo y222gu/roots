@@ -7,13 +7,13 @@ import matplotlib.pyplot as plt
 import cv2
 import numpy as np
 from torch.utils.data import DataLoader
-from olympus_segmentation.aere_dataset import BinarySegDataset
-from olympus_segmentation.transforms import get_train_transforms, get_val_transforms
-from  olympus_segmentation.visualizing_aere_with_binary_models import visualize_all_predictions_with_manual_annotation
+from aere_dataset import MultiLabelSegDataset
+from transforms import get_train_transforms, get_val_transforms
+from torch import nn  
 
 # --------------------- Training Function with Early Stopping ---------------------
 
-def train_model(train_loader, val_loader, output_dir,
+def train_model(train_loader, val_loader, model_path,
                 epochs=100, lr=1e-3, patience=6):
     """
     Train a 2-class (binary) U-Net segmentation model with:
@@ -30,17 +30,16 @@ def train_model(train_loader, val_loader, output_dir,
     val_size   = len(val_loader.dataset)
     print(f"Train size: {train_size}, Val size: {val_size}")
 
-    # 1-channel (binary) output, raw logits
+    # 2-channel (whole + aere part) output, raw logits
     model = smp.Unet(
         encoder_name='resnet34',
         in_channels=3,
-        classes=1,
+        classes=2,
         activation=None
     ).to(device)
 
-    # Combined Dice + BCEWithLogits
-    # single Dice loss
-    loss_fn = smp.losses.DiceLoss(mode='binary', from_logits=True)
+    # BCEWithLogits
+    loss_fn = nn.BCEWithLogitsLoss()
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -55,7 +54,6 @@ def train_model(train_loader, val_loader, output_dir,
         verbose=True
     )
     scaler    = GradScaler()
-    metric_fn = IoU(threshold=0.5)
 
     best_val_loss      = float('inf')
     early_stop_counter = 0
@@ -65,9 +63,9 @@ def train_model(train_loader, val_loader, output_dir,
         model.train()
         running_train_loss = 0.0
 
-        for images, masks, sample_id, images_original in train_loader:
+        for images, masks, sample_id in train_loader:
             images = images.to(device)
-            masks  = masks.to(device).unsqueeze(1).float()
+            masks  = masks.to(device).float()
 
             optimizer.zero_grad()
             # use new autocast API
@@ -87,11 +85,13 @@ def train_model(train_loader, val_loader, output_dir,
         model.eval()
         running_val_loss = 0.0
         total_iou        = 0.0
+        global_inter = 0
+        global_union = 0
 
         with torch.no_grad():
-            for images, masks, sample_id, images_original in val_loader:
+            for images, masks, sample_id in val_loader:
                 images = images.to(device)
-                masks  = masks.to(device).unsqueeze(1).float()
+                masks  = masks.to(device).float()
 
                 logits = model(images)
                 loss   = loss_fn(logits, masks)
@@ -99,17 +99,24 @@ def train_model(train_loader, val_loader, output_dir,
 
                 # compute IoU on probabilities
                 probs = torch.sigmoid(logits)
-                preds = (probs > 0.5).float()
-                total_iou += metric_fn(preds, masks).item()
+                preds = (probs > 0.5)
+
+                # boolean tensors for intersection/union
+                preds_bool = preds
+                masks_bool = masks.bool()
+                inter = (preds_bool & masks_bool).sum().item()
+                union = (preds_bool | masks_bool).sum().item()
+                global_inter += inter
+                global_union += union
 
         val_loss = running_val_loss / val_size
-        avg_iou  = total_iou / len(val_loader)
+        val_iou  = (global_inter / global_union) if global_union > 0 else 0.0
 
         print(
             f"Epoch [{epoch}/{epochs}]  "
             f"Train Loss: {train_loss:.4f}  "
             f"Val Loss:   {val_loss:.4f}  "
-            f"IoU:        {avg_iou:.4f}"
+            f"IoU:        {val_iou:.4f}"
         )
 
         scheduler.step(val_loss)
@@ -117,9 +124,11 @@ def train_model(train_loader, val_loader, output_dir,
         if val_loss < best_val_loss:
             best_val_loss      = val_loss
             early_stop_counter = 0
-            os.makedirs(output_dir, exist_ok=True)
+            # check model directory
+            if not os.path.dirname(model_path):
+                os.makedirs(os.path.dirname(model_path), exist_ok=True)
             torch.save(model.state_dict(),
-                       os.path.join(output_dir, 'best_model.pth'))
+                       model_path)
             print("  → New best model saved.")
         else:
             early_stop_counter += 1
@@ -130,7 +139,7 @@ def train_model(train_loader, val_loader, output_dir,
 
     # Load best model weights before returning
     model.load_state_dict(
-        torch.load(os.path.join(output_dir, 'best_model.pth'))
+        torch.load(model_path)
     )
     return model
 
@@ -139,22 +148,22 @@ def train_model(train_loader, val_loader, output_dir,
 if __name__ == '__main__':
     # Set your directories.
     channels = ['DAPI', 'FITC', 'TRITC']
-    model_path =os.path.join(os.path.dirname(__file__), "weights", 'aere_model_for_olympus.pth')
-    train_data_folder = r'C:\Users\Yifei\Documents\new_endo_model\train'        # Contains subfolders: image, annotation.
-    val_data_folder = r'C:\Users\Yifei\Documents\new_endo_model\val'         # Contains subfolders: image, annotation.          # Contains subfolders: image, annotation.
-    output_folder = r'C:\Users\Yifei\Documents\new_endo_model\results'          # Directory to save the best model.
+    model_path =os.path.join(os.path.dirname(__file__), "weights", 'aere_and_whole_root_model_train_on_tamera.pth')
+    train_data_folder = r'C:\Users\Yifei\Documents\new_aere_model_training_on_tamera\train'        # Contains subfolders: image, annotation.
+    val_data_folder = r'C:\Users\Yifei\Documents\new_aere_model_training_on_tamera\val'         # Contains subfolders: image, annotation.          # Contains subfolders: image, annotation.
+    output_folder = r'C:\Users\Yifei\Documents\new_aere_model_training_on_tamera\results'          # Directory to save the best model.
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
  
     # initialize the dataset with transforms.
-    train_dataset = BinarySegDataset(train_data_folder, channels,transform=get_train_transforms())
-    val_dataset = BinarySegDataset(val_data_folder, channels, transform=get_val_transforms())
+    train_dataset = MultiLabelSegDataset(train_data_folder, channels,transform=get_train_transforms(), manual_annotation='True')
+    val_dataset = MultiLabelSegDataset(val_data_folder, channels, transform=get_val_transforms(), manual_annotation='True')
     # train_dataset.inspect_sample(idx=3)
 
     train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=4)
     val_loader = DataLoader(val_dataset, batch_size=2, shuffle=False, num_workers=4)
 
     # Train the model with early stopping.
-    best_model = train_model(train_loader, val_loader, output_folder, epochs=100, lr=1e-3, patience=6)
+    best_model = train_model(train_loader, val_loader, model_path, epochs=100, lr=1e-3, patience=8)
 
     print("Training complete. Best model saved.")

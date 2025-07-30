@@ -7,6 +7,10 @@ import pandas as pd
 from segmentation_models_pytorch.utils.metrics import IoU
 from scipy.stats import pearsonr
 
+def gamma_correction(image, invGamma=1.0):
+    table = np.array([((i / 255.0) ** invGamma) * 255 for i in np.arange(256)]).astype("uint8")
+    return cv2.LUT(image, table)
+
 def visualize_endo_predictions(model, channels, dataset, output_folder, manual_annotation='True', alpha = 0.5):
     """
     For each sample in the validation dataset:
@@ -44,11 +48,11 @@ def visualize_endo_predictions(model, channels, dataset, output_folder, manual_a
             pred_mask = cv2.resize(pred_mask, (image_original.shape[1], image_original.shape[0]), interpolation=cv2.INTER_NEAREST)
         pred_ov = make_overlay(pred_mask)
 
-        # --- visualize per channel ---
+        # --- compute metrics per channel and store results ---
         for i, ch in enumerate(channels):
             # 1) pull out the ith channel as numpy float in [0,1]
-            chan = image_original[:,:,i]
-
+            chan = image_original[:, :, i]
+        
             # 2) total area and intensity of the predicted mask
             predicted_total_area = np.sum(pred_mask == 1)
             predicted_total_intensity = np.sum(chan[pred_mask == 1])
@@ -56,17 +60,15 @@ def visualize_endo_predictions(model, channels, dataset, output_folder, manual_a
                 predicted_average_intensity = round(np.mean(chan[pred_mask == 1]))
             else:
                 predicted_average_intensity = None
-
+        
             if manual_annotation == 'True':
                 true_total_area = np.sum(true_mask == 1)
-                # total intensity of the true mask
                 true_total_intensity = np.sum(chan[true_mask == 1])
-                # extract the intensity values for the true mask in each channel
                 if np.sum(true_mask == 1) > 0:
                     true_average_intensity = round(np.mean(chan[true_mask == 1]))
                 else:
                     true_average_intensity = None
-
+        
                 # Calculate pixel-level metrics: precision, recall, accuracy, and IoU
                 pred_flat = pred_mask.flatten()
                 true_flat = true_mask.flatten()
@@ -80,7 +82,7 @@ def visualize_endo_predictions(model, channels, dataset, output_folder, manual_a
                 pred_tensor = torch.from_numpy(pred_mask).unsqueeze(0).unsqueeze(0).float()
                 true_tensor = torch.from_numpy(true_mask).unsqueeze(0).unsqueeze(0).float()
                 iou = IoU(threshold=0.5)(pred_tensor, true_tensor).item()
-
+        
                 results.append({
                     'sample_id': sample_id,
                     'channel': ch,
@@ -103,38 +105,59 @@ def visualize_endo_predictions(model, channels, dataset, output_folder, manual_a
                     'predicted_total_intensity': predicted_total_intensity,
                     'predicted_average_intensity': predicted_average_intensity,
                 })
+        img_norm = gamma_correction(image_original, invGamma=0.2)
+        img_norm = img_norm.astype(np.uint8)  # Ensure mask is in uint8 format
+        img_norm = cv2.normalize(img_norm, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
+        img_norm = cv2.GaussianBlur(img_norm, (5, 5), 0)
 
-
-            channel_img = cv2.cvtColor(chan, cv2.COLOR_GRAY2BGR)
-            pred_blend = cv2.addWeighted(channel_img, 1-alpha, pred_ov, alpha, 0)
-
-            if manual_annotation == 'True':
-                true_blend = cv2.addWeighted(channel_img, 1-alpha, true_ov, alpha, 0)
-                fig, axes = plt.subplots(1, 2, figsize=(10, 4), facecolor='black')
-                for ax in axes:
-                    ax.set_facecolor('black')
-                    ax.axis('off')
-                axes[0].imshow(cv2.cvtColor(true_blend, cv2.COLOR_BGR2RGB))
-                axes[0].set_title(f"True mask avg intensity: {true_average_intensity}", color='white')
-                axes[1].imshow(cv2.cvtColor(pred_blend, cv2.COLOR_BGR2RGB))
-                axes[1].set_title(f"Pred mask avg intensity: {predicted_average_intensity}", color='white')
-
-            else:
-                fig, ax = plt.subplots(figsize=(10, 4), facecolor='black')
-                ax.set_facecolor('black')
+        original_rgb = cv2.cvtColor(img_norm, cv2.COLOR_BGR2RGB)
+        overlay_img = cv2.addWeighted(img_norm, 1 - alpha, pred_ov, alpha, 0)
+        overlay_rgb = cv2.cvtColor(overlay_img, cv2.COLOR_BGR2RGB)
+        
+        if manual_annotation == 'True':
+            # Apply the same alpha blending for the true annotation mask
+            true_overlay_img = cv2.addWeighted(img_norm, 1 - alpha, true_ov, alpha, 0)
+            true_rgb = cv2.cvtColor(true_overlay_img, cv2.COLOR_BGR2RGB)
+            fig, axes = plt.subplots(1, 3, figsize=(18, 6), facecolor='black')
+            for ax in axes:
                 ax.axis('off')
-                ax.imshow(cv2.cvtColor(pred_blend, cv2.COLOR_BGR2RGB))
-                ax.set_title(f"Mask area:{predicted_total_area}|Average intensity:{predicted_average_intensity}", color='white')
-
-            fig.suptitle(f"{sample_id}_{ch}", color='white', fontsize=16)
-            plt.tight_layout(rect=[0, 0, 1, 0.95])
-            save_path = os.path.join(output_folder, "prediction", f"{sample_id}_{ch}.png")
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
-            plt.savefig(save_path, facecolor=fig.get_facecolor(), bbox_inches='tight')
-            plt.close(fig)
-    
+                ax.set_facecolor('black')
+            axes[0].imshow(original_rgb)
+            axes[0].set_title("Original Image", color='white', fontsize=25)
+            
+            axes[1].imshow(true_rgb)
+            axes[1].set_title("True Annotation", color='white', fontsize=25)
+            
+            axes[2].imshow(overlay_rgb)
+            axes[2].set_title("Predicted Mask", color='white', fontsize=25)
+            # fig.subplots_adjust(top=0.85)
+            # fig.suptitle(f"{sample_id}", color='white', fontsize=16)
+            plt.tight_layout(pad=0.1, w_pad=0.1, h_pad=0.1)
+            save_path = os.path.join(output_folder, "prediction", f"{sample_id}_combined.png")
+        else:
+            fig, axes = plt.subplots(1, 2, figsize=(12, 6), facecolor='black')
+            for ax in axes:
+                ax.axis('off')
+                ax.set_facecolor('black')
+            
+            axes[0].imshow(original_rgb)
+            axes[0].set_title("Original Image", color='white')
+            
+            axes[1].imshow(overlay_rgb)
+            axes[1].set_title("Predicted Mask", color='white')
+            
+            fig.suptitle(f"{sample_id}", color='white', fontsize=16)
+            plt.tight_layout(pad=0.1, w_pad=0.1, h_pad=0.1)
+            save_path = os.path.join(output_folder, "prediction", f"{sample_id}_combined.png")
+        
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, facecolor=fig.get_facecolor(), bbox_inches='tight')
+        plt.close(fig)
     # Save the results to a CSV file
-    results_df = pd.DataFrame(results)
+    if manual_annotation == 'True':
+        results_df = pd.DataFrame(results, columns=['sample_id','channel','predicted_total_area','predicted_total_intensity','predicted_average_intensity','true_total_area','true_total_intensity','true_average_intensity','precision','recall','accuracy','iou'])
+    else:
+        results_df = pd.DataFrame(results, columns=['sample_id','channel','predicted_total_area','predicted_total_intensity','predicted_average_intensity'])
     results_df.to_csv(os.path.join(output_folder, "prediction",'mask_intensity_results.csv'), index=False)
 
     # plot true average intensity vs predicted average intensity and fit  a line 
@@ -177,5 +200,5 @@ def visualize_endo_predictions(model, channels, dataset, output_folder, manual_a
 def make_overlay(mask):
     # mask: 2D np array of ints {0,1}
     ov = np.zeros((mask.shape[0], mask.shape[1], 3), dtype=np.uint8)
-    ov[mask == 1] = [255, 0, 0]    # blue
+    ov[mask == 1] = [255, 0, 255]    # blue
     return ov

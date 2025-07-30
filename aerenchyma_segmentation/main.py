@@ -13,15 +13,15 @@ if __name__ == "__main__":
     ########################################################
     # Input Parameters
     ########################################################
-    image_folder = os.path.join(os.getcwd(),'aerenchyma_segmentation','data_for_segmentation', 'images', 'val_text')
-    output_path = os.path.join(os.getcwd(),"aerenchyma_segmentation","data_for_segmentation","images", "val_text_predictions")
-    aerenchyma_model_path =os.path.join(os.getcwd(),'aerenchyma_segmentation','data_for_segmentation', 'runs', 'yolov8_segmentation3','weights','best.pt')
+    image_folder = os.path.join(os.getcwd(),"Sorghum Genotype Screen 5cm")
+    output_path = os.path.join(os.getcwd(),"Sorghum Genotype Screen 5cm output")
+    aerenchyma_model_path =os.path.join(os.getcwd(),'aerenchyma_segmentation','runs', 'yolov8_segmentation3','weights','best.pt')
 
     
     ########################################################
     # Analyze the images
     ########################################################
-    model_for_aerenchyma = YOLO(aerenchyma_model_path)  # Replace with your trained model path
+    model_for_aerenchyma = YOLO(aerenchyma_model_path)
     model_for_root = models.detection.maskrcnn_resnet50_fpn(pretrained=True)
     model_for_root.eval()
 
@@ -30,7 +30,7 @@ if __name__ == "__main__":
 
     # Define a transformation to normalize the input image
     transform = transforms.Compose([
-        transforms.ToTensor(),
+        transforms.ToTensor()
     ])
 
     list_of_image_files = os.listdir(image_folder)
@@ -39,14 +39,46 @@ if __name__ == "__main__":
         image_path = os.path.join(image_folder, image_file)
         image = cv2.imread(image_path)
 
-        root_mask, root_area = segment_root(model_for_root, image, transform, option='highest_confidence',)
+        # # normalize the image by mean
+        # stretched = cv2.normalize(
+        #     image,              # src
+        #     None,              # dst (if None, returns a new array)
+        #     alpha=0,           # new min value
+        #     beta=255,          # new max value
+        #     norm_type=cv2.NORM_MINMAX
+        # )
+
+        # # show the image
+        # cv2.imshow("Normalized Image", stretched)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
+    
+        root_mask, root_area, transformed = segment_root(model_for_root, image, transform, option='highest_confidence',)
         aerenchyma_mask, aerenchyma_area = segment_aerenchyma(model_for_aerenchyma, image)
+
+
+        # Ensure the masks and root area are not None
+        if root_mask is None or aerenchyma_mask is None or root_area == 0:
+            print(f"Skipping {image_file} due to missing masks or zero root area.")
+            continue
 
         aerenchyma_ratio = aerenchyma_area / root_area
 
         # Visualize the overlay of the aerenchyma_mask with blue at opacity of 0.3 on the original image
         # (root_mask - aerenchyma_mask) with magenta at opacity of 0.3 on the original image
         overlay = image.copy()
+
+        # turn the image to float for scaling
+        overlay = overlay.astype(float)
+        # Apply scaling
+        overlay = overlay * 1.5
+        
+        # Clip values to valid range and convert back to 16-bit
+        overlay = np.clip(overlay, 0, 65535).astype(np.uint8)
+
+        # convert back to cv2 image format
+        overlay = cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB)
+
         root_mask_subtracted =  np.logical_and(root_mask, np.logical_not(aerenchyma_mask)).astype(np.uint8)
         root_mask_color = np.stack([root_mask_subtracted * 255, root_mask_subtracted * 0, root_mask_subtracted * 255], axis=-1)  # Red
         aerenchyma_mask_color = np.stack([aerenchyma_mask * 255, aerenchyma_mask * 0, aerenchyma_mask * 0], axis=-1)  # Blue

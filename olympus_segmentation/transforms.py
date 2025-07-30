@@ -12,7 +12,7 @@ def get_train_transforms():
         ToTensorV2(),
     ],
         additional_targets={
-            "image_original": "image_original"
+            "mask": "mask"
         })
 
 def get_val_transforms():
@@ -22,5 +22,5 @@ def get_val_transforms():
         ToTensorV2(),
     ],
         additional_targets={
-            "image_original": "image_original"
+            "mask": "mask"
         })

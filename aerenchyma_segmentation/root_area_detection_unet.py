@@ -6,10 +6,10 @@ from torchvision import models, transforms
 import os
 
 def segment_root(model, image, transform, option='highest_confidence', confidence_threshold=0.1):
-
-    # Apply transformation
+    # Convert image to RGB and apply transformation
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    input_tensor = transform(image_rgb).unsqueeze(0)
+    transformed = transform(image_rgb)
+    input_tensor = transformed.unsqueeze(0)
 
     # Perform segmentation with the pre-trained model
     with torch.no_grad():
@@ -34,27 +34,29 @@ def segment_root(model, image, transform, option='highest_confidence', confidenc
             best_mask = masks[best_mask_idx, 0] > 0.5
             best_mask = best_mask.cpu().numpy().astype(np.uint8)
             area = np.sum(best_mask)
-            return best_mask, area
+            return best_mask, area, transformed
 
         # If there are valid masks then find the mask with the largest area
         best_mask = None
         largest_area = 0
-        best_mask_idx = -1
-        for i, mask in enumerate(valid_masks):
+        for mask in valid_masks:
             area = np.sum(mask)
             if area > largest_area:
                 largest_area = area
                 best_mask = mask
-                best_mask_idx = i
-        return best_mask, largest_area
+        return best_mask, largest_area, transformed
 
     elif option == 'highest_confidence':
+        # Check if there are any masks in the prediction
+        if masks.shape[0] == 0:
+            return None, 0, transformed
+        
         # Find the mask with the highest confidence score
         best_mask_idx = torch.argmax(scores).item()
         best_mask = masks[best_mask_idx, 0] > 0.5
         best_mask = best_mask.cpu().numpy().astype(np.uint8)
         area = np.sum(best_mask)
-        return best_mask, area
+        return best_mask, area, transformed
     
     else:
         raise ValueError("Invalid option. Choose 'largest_area' or 'highest_confidence'.")
