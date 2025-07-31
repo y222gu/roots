@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 from torch.utils.data import DataLoader
 from olympus_segmentation.aere.aere_dataset import BinarySegDataset
-from olympus_segmentation.transforms import get_train_transforms, get_val_transforms
+from olympus_segmentation.endo.transforms import get_train_transforms, get_val_transforms
 from  olympus_segmentation.aere.visualizing_aere_with_binary_models import visualize_all_predictions_with_manual_annotation
 
 # --------------------- Training Function with Early Stopping ---------------------

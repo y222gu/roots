@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils.data import Dataset
-from transforms import get_train_transforms, get_val_transforms
+from olympus_segmentation.endo.transforms import get_train_transforms, get_val_transforms
 import torch
 
 

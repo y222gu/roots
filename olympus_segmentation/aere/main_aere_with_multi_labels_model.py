@@ -3,7 +3,7 @@ import torch
 import segmentation_models_pytorch as smp
 from torch.utils.data import DataLoader
 from aere_dataset import MultiLabelSegDataset
-from transforms import get_val_transforms
+from olympus_segmentation.endo.transforms import get_val_transforms
 from olympus_segmentation.aere.visualizing_aere_with_multi_labels_model import visualize_all_predictions_without_manual_annotation
 from torchvision import models
 

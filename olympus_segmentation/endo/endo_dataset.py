@@ -3,236 +3,320 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils.data import Dataset
+from skimage.filters import median, gaussian
+from skimage.morphology import square
+from transforms import get_train_transforms
+import torch
+import os
 
 
 # --------------------- Dataset Class ---------------------
 class MultiChannelSegDataset(Dataset):
-    def __init__(self, data_dir, channels, transform=None, manual_annotation = 'True'):
+    def __init__(self, data_dir, channels, transform=None, manual_annotation=True):
         """
-        Args:
-            image_dir (str): Path to the main data folder that contains three subfolders: DAPI, GFP, TRITC.
-            annotation_dir (str): Path to the folder with annotation files.
-            transform: Optional albumentations transform to be applied on the images and masks.
+        data_dir: root directory (e.g. "Training/")
+        channels: list of substrings to identify each channel file (['DAPI','FITC','TRITC'])
         """
-        self.image_dir = os.path.join(data_dir, 'image') # Assuming images are in the same folder as annotations
-        self.manual_annotation = manual_annotation
-        if manual_annotation == 'True':
-            self.annotation_dir = os.path.join(data_dir, 'annotation')
-        else:
-            self.annotation_dir = None
         self.transform = transform
         self.channels = channels
+        self.manual_annotation = manual_annotation
 
-        # Get the all subfolder names in the image directory as sample id.
-        self.sample_ids = [f for f in os.listdir(self.image_dir ) if os.path.isdir(os.path.join(self.image_dir , f))]
+        # find all sample folders (those that contain at least one .ome.tif)
+        self.samples = []
+        for root, dirs, files in os.walk(data_dir):
+            tif_files = [f for f in files if f.endswith(('.tif', '.tiff', '.ome.tif'))]
+            if not tif_files:
+                continue
 
-        # loaf all the image stacks
-        self.data = []
-        if manual_annotation == 'True':
-            for sample_id in self.sample_ids:
-                image_stack = self.load_an_image_stack(sample_id)
-                annotation = self.yolo_polygon_to_mask(sample_id, image_stack)
-                if image_stack is None or annotation is None:
-                    print(f"Skipping sample {sample_id} due to missing data.")
-                    continue
-                self.data.append((image_stack, annotation, sample_id))
+            sample_id = os.path.basename(root)
+            parent    = os.path.dirname(root)
 
-        else:
-            for sample_id in self.sample_ids:
-                image_stack = self.load_an_image_stack(sample_id)
-                if image_stack is None:
-                    print(f"Skipping sample {sample_id} due to missing data.")
-                    continue
-                self.data.append((image_stack, sample_id))
-        
-        print(f"Found {len(self.data)} samples")
-        # print all sample ids of data
-        print("Sample IDs:", [d[2] for d in self.data] if manual_annotation == 'True' else [d[1] for d in self.data])
+            # find the annotation .ome.txt in the parent folder
+            ann_file = next(
+                (f for f in os.listdir(parent)
+                 if f.startswith(sample_id) and f.endswith('.txt')),
+                None
+            )
+            if manual_annotation and ann_file is None:
+                print(f"[Skipping] no annotation for {sample_id}")
+                continue
 
+            ann_path = os.path.join(parent, ann_file) if ann_file else None
+            self.samples.append((root, ann_path, sample_id))
 
-
-    def load_an_image_stack(self, sample_id):
-        """
-        Load images from three channels (DAPI, GFP, TRITC) for a given sample ID.
-        Returns a stacked image of shape (height, width, 3).
-        """
-        # load the images from the subfolders with the sample_id.
-        image_subfolder = os.path.join(self.image_dir, sample_id)
-        if not os.path.exists(image_subfolder):
-            raise FileNotFoundError(f"Image directory not found: {image_subfolder}")
-        
-        # List of channels to load.
-        imgs = []
-        # For each channel, search for a file that contains the channel name.
-        for ch in self.channels:
-            found_file = None
-            for file in os.listdir(image_subfolder):
-                if ch in file:
-                    found_file = file
-                    break
-            if not found_file:
-                return None  # No file found for this channel
-            img_path = os.path.join(image_subfolder, found_file)
-            img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-            if img is None:
-                return None  # Image could not be read
-            imgs.append(img)
-        return np.stack(imgs, axis=-1)
+        print(f"[Dataset] Found {len(self.samples)} samples under {data_dir}")
 
     def __len__(self):
-        return len(self.data)
+        return len(self.samples)
 
     def __getitem__(self, idx):
-        data = self.data[idx]
+        img_dir, ann_path, sid = self.samples[idx]
+        image = self._load_image_stack(img_dir)         # H×W×C float32
+        mask  = self._yolo_to_inner_outer_mask(ann_path, image.shape[:2]) if ann_path else None
 
-        if self.manual_annotation == 'True':
-            image_original, mask, sample_id = data
-
-            # preprocess
-            image = self.gamma_correction(image_original, gamma=0.2)
-            image = image.astype(np.uint8)
-            image = cv2.normalize(image, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
-            image = cv2.GaussianBlur(image, (5, 5), 0)
-
-            # to tensor
+        # preprocess + augment
+        # image = self.preprocess(image)
+        if mask is not None:
             if self.transform:
-                augmented = self.transform(image=image, mask=mask)
-                image = augmented['image']
-                mask = augmented['mask']
-            return image, mask, sample_id, image_original
-        
+                aug = self.transform(image=image, mask=mask)
+                image, mask = aug['image'], aug['mask']
+
+            # convert to torch.Tensor (C,H,W)        
+            mask = mask.float()  
+
+            # ***critical***: clone to force a fresh, resizable storage
+            image = image.clone().contiguous()
+            mask  = mask.clone().contiguous()
+
+            return image, mask, sid
         else:
-            image_original, sample_id = data
-
-            # preprocess
-            image = self.gamma_correction(image_original, gamma=0.2)
-            image = image.astype(np.uint8)
-            image = cv2.normalize(image, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
-            image = cv2.GaussianBlur(image, (5, 5), 0)
-            # to tensor
             if self.transform:
-                augmented = self.transform(image=image)
-                image = augmented['image']
-            return image, sample_id, image_original
+                image = self.transform(image=image)['image']
+            return image, sid
 
-    def yolo_polygon_to_mask(self, sample_id, image):
-        """
-        Convert YOLO polygon annotations for a “donut” (outer + inner ring)
-        into a binary segmentation mask:
-            0 = background (outside outer OR inside inner)
-            1 = donut region (between outer and inner)
-        Expects each line in the label file to be:
-            <class> <x1> <y1> <x2> <y2> ... <xn> <yn>
-        where class 0 = outer boundary, class 1 = inner boundary.
-        """
+    def _load_image_stack(self, folder):
+        imgs = []
+        for ch in self.channels:
+            fn = next(
+                (f for f in os.listdir(folder)
+                 if ch in f and f.lower().endswith(('.ome.tif', '.tif', '.tiff'))),
+                None
+            )
+            if fn is None:
+                raise FileNotFoundError(f"Channel {ch} missing in {folder}")
+            img = cv2.imread(os.path.join(folder, fn), cv2.IMREAD_UNCHANGED)
+            if img is None:
+                raise IOError(f"Failed to read {fn}")
+            imgs.append(img.astype(np.float32))
+        return np.stack(imgs, axis=-1)
 
-        h, w = image.shape[:2]
-        mask = np.zeros((h, w), dtype=np.uint8)
+    def _yolo_to_inner_outer_mask(self, ann_path, hw):
+        h, w = hw
+        outer = np.zeros((h, w), dtype=np.uint8)
+        inner = np.zeros((h, w), dtype=np.uint8)
 
-        # find the label file for this sample
-        label_path = None
-        for fn in os.listdir(self.annotation_dir):
-            if fn.endswith('.txt') and os.path.splitext(fn)[0] == sample_id:
-                label_path = os.path.join(self.annotation_dir, fn)
-                break
-        if label_path is None:
-            return None
-
-        outer_polys = []
-        inner_polys = []
-
-        with open(label_path, 'r') as f:
+        with open(ann_path) as f:
             for line in f:
                 toks = line.strip().split()
-                # must have at least class + one point (i.e. 3 tokens) and odd count
                 if len(toks) < 3 or len(toks) % 2 == 0:
                     continue
-                cls = int(toks[0])
+                cls    = int(toks[0])
                 coords = list(map(float, toks[1:]))
-                pts = []
-                for i in range(0, len(coords), 2):
-                    x = int(coords[i] * w)
-                    y = int(coords[i+1] * h)
-                    pts.append([x, y])
-                poly = np.array(pts, dtype=np.int32).reshape((-1,1,2))
+                pts = [[int(coords[i]*w), int(coords[i+1]*h)]
+                       for i in range(0, len(coords), 2)]
+                poly = np.array(pts, dtype=np.int32).reshape(-1,1,2)
+                if cls==1:
+                    cv2.fillPoly(outer, [poly], 1)
+                elif cls==0:
+                    cv2.fillPoly(inner, [poly], 1)
 
-                if cls == 1:
-                    outer_polys.append(poly)
-                elif cls == 0:
-                    inner_polys.append(poly)
-                # else: ignore any other classes
+        # channel0 = inner; channel1 = outer - inner
+        outer_minus_inner = np.clip(outer.astype(int) - inner.astype(int), 0, 1).astype(np.uint8)
+        return np.stack([inner, outer_minus_inner], axis=-1)
 
-        # Fill the outer region first
-        if outer_polys:
-            cv2.fillPoly(mask, outer_polys, color=1)
+    def preprocess(self, img_stack):
+        """
+        Linear float32 preprocessing:
+          1) Median filter (3×3)
+          2) Gaussian denoise (σ=1)
+          3) Background subtract (Gaussian σ=50)
+          4) Percentile clip (1st–99th)
+          5) Rescale to [0,1]
+        Returns float32 (H, W, C) in [0,1].
+        """
+        processed = []
+        for c in range(img_stack.shape[-1]):
+            ch = img_stack[..., c]
+            # 1. median
+            ch = median(ch, square(3))
+            # 2. gaussian denoise
+            ch = gaussian(ch, sigma=1.0)
+            # 3. background subtract
+            bg = gaussian(ch, sigma=50)
+            ch = np.clip(ch - bg, 0.0, None)
+            # 4. percentile clip
+            p1, p99 = np.percentile(ch, (1, 99))
+            ch = np.clip(ch, p1, p99)
+            # 5. rescale to [0,1]
+            ch = (ch - p1) / (p99 - p1)
+            processed.append(ch.astype(np.float32))
+        proc_stack = np.stack(processed, axis=-1)
+        return proc_stack
 
-        # Then “erase” the inner region (make it background again)
-        if inner_polys:
-            cv2.fillPoly(mask, inner_polys, color=0)
+    def gamma_correction(self, img, gamma=1.0):
+        """
+        Apply gamma correction to a float [0,1] image or uint8 image.
+        Ensures we end up with a uint8 result in [0,255].
+        """
+        # if float, scale to [0,255]
+        if img.dtype != np.uint8:
+            img = np.clip(img, 0.0, 1.0)
+            img = (img * 255).astype(np.uint8)
 
-        # # plot mask for debugging
-        # plt.figure(figsize=(6, 6))
-        # plt.imshow(mask, cmap='gray')
-        # plt.title(f"Mask for sample {sample_id}")
-        # plt.axis('off')
-        # plt.show()
-        return mask
+        # build lookup table
+        table = np.array([((i / 255.0) ** gamma) * 255
+                          for i in range(256)]).astype("uint8")
+        return cv2.LUT(img, table)
 
-    def gamma_correction(self, image, gamma=1.0):
-
-        # build lookup table [0..255] → [0..255]^(1/gamma)
-        table = np.array([
-            ((i / 255.0) ** gamma) * 255
-            for i in np.arange(256)
-        ]).astype("uint8")
-
-        img_norm = cv2.LUT(image, table)
-        return img_norm
 
     def inspect_sample(self, idx=0):
         """
-        Load and display a sample and its segmentation mask overlay on each individual channel.
-        For each channel (DAPI, GFP, TRITC), this method displays the grayscale image with the segmentation
-        overlay applied (red for outer ring, blue for inner ring).
+        Display each channel with inner (blue) & outer-only (red) overlay.
+        Now uses preprocess() so even low-signal channels (FITC) show up.
         """
-        image, mask, sample_id = self.data[idx]
+        # 1) load & preprocess
+        img_dir, ann_path, sid = self.samples[idx]
+        raw_stack = self._load_image_stack(img_dir)              # H,W,C float32
+        proc_stack = self.preprocess(raw_stack)                  # H,W,C float32 in [0,1]
 
-        # gamma correction for better visualization
-        img_norm = self.gamma_correction(image, gamma=0.2)
+        # 2) get mask (inner / outer-only)
+        mask = self._yolo_to_inner_outer_mask(ann_path, raw_stack.shape[:2])
 
-        # normalize the mask
-        img_norm = img_norm.astype(np.uint8)  # Ensure mask is in uint8 format
-        img_norm = cv2.normalize(img_norm, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
-        # smooth the image to reduce noise
-        img_norm = cv2.GaussianBlur(img_norm, (5, 5), 0)
+        # 3) build display stack: normalize & gamma per-channel → uint8
+        disp = []
+        for c in range(proc_stack.shape[-1]):
+            # scale to 0–255
+            ch8 = (proc_stack[..., c] * 255).astype(np.uint8)
+            # gamma LUT
+            ch8 = self.gamma_correction(ch8, gamma=0.2)
+            disp.append(ch8)
+        disp = np.stack(disp, axis=-1)  # H,W,C uint8
 
-        # ensure mask has 3 channels for overlay
-        # plot the normalized image
-        plt.figure(figsize=(6, 6))
-        plt.imshow(cv2.cvtColor(img_norm, cv2.COLOR_BGR2RGB))
-        plt.axis('off')
-        plt.show()
+        # 4) overlay mask (same as before)
+        overlay = np.zeros((*mask.shape[:2], 3), dtype=np.uint8)
+        overlay[mask[...,0]==1] = [255, 0, 0]   # inner→blue in BGR
+        overlay[mask[...,1]==1] = [0, 0, 255]   # outer-only→red
 
-        # unique_vals = np.unique(mask)
-        # print("Unique values in mask:", unique_vals)
-
-        overlay_mask = np.zeros((mask.shape[0], mask.shape[1], 3), dtype=np.uint8)
-        overlay_mask[mask == 0] = [0, 0, 255]   # red for outer ring
-        overlay_mask[mask == 1] = [255, 0, 0]# blue for inner ring
         alpha = 0.5
-
-        # loop through each layer in the image stack.
-        channels = ['DAPI', 'FITC', 'TRITC']
-        imgs = [img_norm[:, :, i] for i in range(img_norm.shape[2])]
-        
-        plt.figure(figsize=(18, 6))
-        for i, ch in enumerate(channels):
-            channel_img = imgs[i]
-            channel_img_color = cv2.cvtColor(channel_img, cv2.COLOR_GRAY2BGR)
-            overlay = cv2.addWeighted(channel_img_color, 1 - alpha, overlay_mask, alpha, 0)
-            plt.subplot(1, 3, i + 1)
-            plt.imshow(cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB))
-            plt.title(f"sample_{sample_id}_{ch}")
-            plt.axis("off")
+        plt.figure(figsize=(18,6))
+        for i, ch in enumerate(self.channels):
+            gray = disp[..., i]
+            bgr  = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+            vis  = cv2.addWeighted(bgr, 1-alpha, overlay, alpha, 0)
+            plt.subplot(1, len(self.channels), i+1)
+            plt.imshow(cv2.cvtColor(vis, cv2.COLOR_BGR2RGB))
+            plt.title(f"{sid} — {ch}")
+            plt.axis('off')
         plt.tight_layout()
         plt.show()
+
+    def get_debug_item(self, idx):
+        img_dir, ann_path, sid = self.samples[idx]
+        raw       = self._load_image_stack(img_dir)
+        mask_raw  = self._yolo_to_inner_outer_mask(ann_path, raw.shape[:2]) if ann_path else None
+        preproc   = self.preprocess(raw)
+
+        if mask_raw is not None and self.transform:
+            aug = self.transform(image=preproc, mask=mask_raw)
+            transformed     = aug['image']
+            mask_transformed = aug['mask']
+        else:
+            transformed     = None
+            mask_transformed = None
+
+        return {
+            'sample_id': sid,
+            'raw'      : raw,
+            'preprocessed': preproc,
+            'transformed' : transformed,
+            'mask_raw'    : mask_raw,
+            'mask_transformed': mask_transformed
+        }
+    
+
+def visualize_augmented(img, ax, channel_idx, mean=None, std=None):
+    """
+    img:   either a torch.Tensor (C,H,W) or a numpy array (H,W,C) in [0,1]
+    ax:    matplotlib Axes
+    channel_idx: which channel to display
+    mean,std: optional arrays to un-normalize [only used for torch.Tensor]
+    """
+    # 1) convert to H×W×C numpy in [0,1]
+    if isinstance(img, torch.Tensor):
+        # Tensor: C×H×W -> H×W×C
+        arr = img.permute(1,2,0).cpu().numpy()
+        if (mean is not None) and (std is not None):
+            # unnormalize
+            arr = arr * std[None,None,:] + mean[None,None,:]
+        arr = np.clip(arr, 0, 1)
+    else:
+        # assume numpy H×W×C already in [0,1]
+        arr = img
+
+    # 2) grab the requested channel and plot
+    channel = arr[..., channel_idx]
+    ax.imshow(channel, cmap='gray', vmin=0, vmax=1)
+    ax.set_xticks([]); ax.set_yticks([])
+
+
+if __name__ == '__main__':
+
+    data_dir = r'C:\Users\Yifei\Documents\data_for_publication\test\Zeiss'
+    channels = ['DAPI', 'FITC', 'TRITC']
+    transform = get_train_transforms()
+    dataset = MultiChannelSegDataset(data_dir, channels, transform=transform)
+
+    # Create output folder for figures
+    output_dir = r'C:\Users\Yifei\Documents\debug_figures'
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Process all samples in the dataset and save figures with their sample id as filename
+    for idx in range(len(dataset)):
+        dbg = dataset.get_debug_item(idx)
+        sample_id = dbg['sample_id']
+        print("Processing Sample:", sample_id)
+        print(" raw shape:", dbg['raw'].shape, dbg['raw'].dtype)
+        print(" prep shape:", dbg['preprocessed'].shape, dbg['preprocessed'].dtype)
+        if dbg['transformed'] is not None:
+            print(" aug shape:", dbg['transformed'].shape, dbg['transformed'].dtype)
+
+        n_ch = len(channels)
+        mean = np.array([0.5]*n_ch)
+        std  = np.array([0.5]*n_ch)
+
+        # Build color overlays for raw and augmented masks
+        mask_raw = dbg['mask_raw']  # H×W×2 uint8
+        mask_aug = dbg['mask_transformed']  # H×W×2 uint8
+        mask_raw_overlay = np.zeros((*mask_raw.shape[:2], 3), dtype=np.uint8)
+        mask_raw_overlay[mask_raw[...,0]==1] = [255, 0, 0]   # blue for inner (BGR)
+        mask_raw_overlay[mask_raw[...,1]==1] = [0,   0, 255]   # red for outer-only
+
+        if mask_aug is not None:
+            mask_aug_overlay = np.zeros((*mask_aug.shape[:2], 3), dtype=np.uint8)
+            mask_aug_overlay[mask_aug[...,0]==1] = [255, 0, 0]   # blue for inner (BGR)
+            mask_aug_overlay[mask_aug[...,1]==1] = [0,   0, 255]   # red for outer-only
+
+        alpha = 0.5
+
+        # Create figure with 3 rows for RAW, PREP, and AUG views
+        fig, axes = plt.subplots(3, n_ch, figsize=(4*n_ch, 12))
+        for ch_idx, ch in enumerate(dataset.channels):
+            # RAW view with overlay
+            axes[0, ch_idx].imshow(dbg['raw'][..., ch_idx], cmap='gray')
+            axes[0, ch_idx].imshow(mask_raw_overlay, alpha=alpha)
+            axes[0, ch_idx].set_title(f"RAW {ch}")
+            axes[0, ch_idx].axis('off')
+
+            # Preprocessed view
+            axes[1, ch_idx].imshow(dbg['preprocessed'][..., ch_idx], cmap='gray')
+            axes[1, ch_idx].set_title(f"PREP {ch}")
+            axes[1, ch_idx].axis('off')
+
+            # Transformed view with overlay if available
+            if dbg['transformed'] is not None:
+                img_t = dbg['transformed']        # torch.Tensor (C,H,W)
+                visualize_augmented(img_t, axes[2, ch_idx], ch_idx, mean, std)
+                axes[2, ch_idx].set_title(f"AUG {ch}")
+                if mask_aug is not None:
+                    axes[2, ch_idx].imshow(mask_aug_overlay, alpha=alpha)
+                axes[2, ch_idx].axis('off')
+            else:
+                axes[2, ch_idx].text(0.5, 0.5, 'no transform', ha='center', va='center')
+                axes[2, ch_idx].axis('off')
+
+        plt.tight_layout()
+        out_path = os.path.join(output_dir, f"{sample_id}.png")
+        plt.savefig(out_path)
+        plt.close(fig)
+
+    print("Debug item inspection complete. Figures saved to", output_dir)

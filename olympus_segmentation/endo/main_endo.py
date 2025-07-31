@@ -3,7 +3,7 @@ import torch
 import segmentation_models_pytorch as smp
 from torch.utils.data import DataLoader
 from endo_dataset import MultiChannelSegDataset
-from transforms import get_val_transforms
+from olympus_segmentation.endo.transforms import get_val_transforms
 from visualizing_endo_predictions import visualize_endo_predictions
 
 # --------------------- Main ---------------------

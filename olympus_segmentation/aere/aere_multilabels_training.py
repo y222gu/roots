@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 from torch.utils.data import DataLoader
 from aere_dataset import MultiLabelSegDataset
-from transforms import get_train_transforms, get_val_transforms
+from olympus_segmentation.endo.transforms import get_train_transforms, get_val_transforms
 from torch import nn  
 
 # --------------------- Training Function with Early Stopping ---------------------
