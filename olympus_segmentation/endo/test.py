@@ -7,12 +7,13 @@ from torch.utils.data import DataLoader
 from segmentation_models_pytorch import Unet, DeepLabV3
 from endo_dataset import MultiChannelSegDataset
 from transforms import get_val_transforms
-from endo_training_multiple_model import dice_coef_multilabel, iou_coef_multilabel  # import your metrics
+import csv
+from endo_training_multiple_model import dice_coef_multilabel, iou_coef_multilabel, precision_multilabel, accuracy_multilabel  # import your metrics
 
 
 def test_and_evaluate(model, loader, output_folder, device, threshold=0.5):
     model.eval()
-    all_dice, all_iou = [], []
+    all_dice, all_iou, all_precision, all_accuracy = [], [], [], []
     os.makedirs(output_folder, exist_ok=True)
 
     dataset = loader.dataset
@@ -27,6 +28,8 @@ def test_and_evaluate(model, loader, output_folder, device, threshold=0.5):
 
             all_dice.append(dice_coef_multilabel(probs, masks))
             all_iou.append(iou_coef_multilabel(probs, masks))
+            all_precision.append(precision_multilabel(probs, masks))
+            all_accuracy.append(accuracy_multilabel(probs, masks))
 
             pred_mask = (probs > threshold).cpu().numpy().astype(np.uint8)
             gt_mask   = masks.cpu().numpy().astype(np.uint8)
@@ -68,13 +71,21 @@ def test_and_evaluate(model, loader, output_folder, device, threshold=0.5):
 
     mean_dice = float(np.mean(all_dice))
     mean_iou  = float(np.mean(all_iou))
-    return mean_dice, mean_iou
+    mean_precision = float(np.mean(all_precision))
+    mean_accuracy  = float(np.mean(all_accuracy))
+    
+    csv_path = os.path.join(output_folder, 'evaluation_metrics.csv')
+    with open(csv_path, 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['Dice', 'IoU', 'Precision', 'Accuracy'])
+        writer.writerow([mean_dice, mean_iou, mean_precision, mean_accuracy])
+    return mean_dice, mean_iou, mean_precision, mean_accuracy
 
 if __name__ == '__main__':
     # --- config ---
     test_data_dir = r'C:\Users\Yifei\Documents\data_for_publication\test_preprocessed'
     # save each channel separately to a specific folder
-    output_folder = r'C:\Users\Yifei\Documents\data_for_publication\test_preprocessed_results'
+    output_folder = r'C:\Users\Yifei\Documents\data_for_publication\results\test_preprocessed_results'
     os.makedirs(output_folder, exist_ok=True)
     model_name    = 'unet_resnet34'   # or whichever you just trained
     channels      = ['DAPI','FITC','TRITC']
@@ -104,6 +115,6 @@ if __name__ == '__main__':
     model.load_state_dict(torch.load(best_model_path, map_location=device))
 
     # --- run test ---
-    dice, iou = test_and_evaluate(model, test_loader, output_folder, device)
-    print(f"Test set results → Mean Dice: {dice:.4f}, Mean IoU: {iou:.4f}")
+    dice, iou, precision, accuracy = test_and_evaluate(model, test_loader, output_folder, device)
+    print(f"Test set results → Mean Dice: {dice:.4f}, Mean IoU: {iou:.4f}, Mean Precision: {precision:.4f}, Mean Accuracy: {accuracy:.4f}")
     print("All raw and overlay masks saved under ./test_predictions/")

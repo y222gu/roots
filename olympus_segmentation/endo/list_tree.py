@@ -11,5 +11,5 @@ def list_files(startpath):
 
 if __name__ == "__main__":
     # Set the path to the directory you want to list
-    directory_path = r'C:\Users\Yifei\Documents\data_for_publication\test\C10\Sorghum\SQR'
+    directory_path = r'C:\Users\Yifei\Documents\data_for_publication\train\C10\Sorghum\Images_SRN'
     list_files(directory_path)

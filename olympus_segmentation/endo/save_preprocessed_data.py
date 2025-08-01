@@ -60,8 +60,8 @@ def save_preprocessed_images(
 
 if __name__ == '__main__':
     # adjust paths to your environment
-    DATA_DIR   = r'C:\Users\Yifei\Documents\data_for_publication\test'
-    OUTPUT_DIR = r'C:\Users\Yifei\Documents\data_for_publication\test_preprocessed'
+    DATA_DIR   = r'C:\Users\Yifei\Documents\data_for_publication\test\tomato'
+    OUTPUT_DIR = r'C:\Users\Yifei\Documents\data_for_publication\tomato_preprocessed'
     CHANNELS   = ['DAPI','FITC','TRITC']
 
     save_preprocessed_images(DATA_DIR, CHANNELS, OUTPUT_DIR)

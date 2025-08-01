@@ -237,7 +237,7 @@ if __name__ == '__main__':
 
     hyperparams = {
         'device': torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
-        'batch_size': 8,
+        'batch_size': 32,
         'lr': 1e-4,
         'weight_decay': 1e-5,
         'epochs': 100,
@@ -247,8 +247,6 @@ if __name__ == '__main__':
     # model architectures to compare
     model_configs = {
         'unet_resnet34': lambda **kw: smp.Unet(encoder_name='resnet34', **kw),
-        'deeplabv3_resnet50': lambda **kw: smp.DeepLabV3(encoder_name='resnet50', **kw),
-        'segformer_b0': lambda **kw: smp.SegFormer(encoder_name='MiT-B0', **kw),
     }
 
     # channel combinations to test

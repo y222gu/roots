@@ -61,7 +61,9 @@ class MultiChannelSegDataset(Dataset):
                 aug = self.transform(image=image, mask=mask)
                 image, mask = aug['image'], aug['mask']
 
-            # convert to torch.Tensor (C,H,W)        
+            # convert to torch.Tensor (C,H,W)   
+            # mask = torch.from_numpy(mask).permute(2,0,1).float()
+            # image = torch.from_numpy(image).permute(2,0,1).float()     
             mask = mask.float()  
 
             # ***critical***: clone to force a fresh, resizable storage
@@ -72,6 +74,13 @@ class MultiChannelSegDataset(Dataset):
         else:
             if self.transform:
                 image = self.transform(image=image)['image']
+
+                # convert to torch.Tensor (C,H,W)   
+                image = torch.from_numpy(image).permute(2,0,1).float()     
+
+                # ***critical***: clone to force a fresh, resizable storage
+                image = image.clone().contiguous()
+
             return image, sid
 
     def _load_image_stack(self, folder):
@@ -85,6 +94,7 @@ class MultiChannelSegDataset(Dataset):
             if fn is None:
                 raise FileNotFoundError(f"Channel {ch} missing in {folder}")
             img = cv2.imread(os.path.join(folder, fn), cv2.IMREAD_UNCHANGED)
+            # img = cv2.imread(os.path.join(folder, fn), cv2.IMREAD_GRAYSCALE)
             if img is None:
                 raise IOError(f"Failed to read {fn}")
             imgs.append(img.astype(np.float32))
@@ -251,10 +261,10 @@ def visualize_augmented(img, ax, channel_idx, mean=None, std=None):
 
 if __name__ == '__main__':
 
-    data_dir = r'C:\Users\Yifei\Documents\data_for_publication\test\Zeiss'
+    data_dir = r'C:\Users\Yifei\Documents\data_for_publication\train\C10\Sorghum'
     channels = ['DAPI', 'FITC', 'TRITC']
     transform = get_train_transforms()
-    dataset = MultiChannelSegDataset(data_dir, channels, transform=transform)
+    dataset = MultiChannelSegDataset(data_dir, channels, transform=None)
 
     # Create output folder for figures
     output_dir = r'C:\Users\Yifei\Documents\debug_figures'

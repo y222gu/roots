@@ -40,7 +40,7 @@ def rename_annotation_files(root_dir):
 
 if __name__ == '__main__':
     # default to your folder, or take an override from the command line
-    DEFAULT_ROOT = r"C:\Users\Yifei\Documents\data_for_publication\val\Olympus\Sorghum\Teshale\Exp6"
+    DEFAULT_ROOT = r"C:\Users\Yifei\Documents\data_for_publication\train\C10\Sorghum\Images_SRN"
     if len(sys.argv) == 2:
         root = sys.argv[1]
     else:

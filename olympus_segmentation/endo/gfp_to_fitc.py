@@ -7,8 +7,8 @@ def rename_gfp_to_fitc(root_dir):
     for dirpath, dirnames, filenames in os.walk(root_dir):
         for fname in filenames:
             # Only target TIFF‐style files that contain “GFP” in the basename
-            if 'BF' in fname and fname.lower().endswith(('.tif', '.tiff', '.ome.tif')):
-                new_fname = fname.replace('BF', 'TRITC')
+            if 'GFP' in fname and fname.lower().endswith(('.tif', '.tiff', '.ome.tif')):
+                new_fname = fname.replace('GFP', 'FITC')
                 old_path = os.path.join(dirpath, fname)
                 new_path = os.path.join(dirpath, new_fname)
 
@@ -20,7 +20,7 @@ def rename_gfp_to_fitc(root_dir):
 
 if __name__ == '__main__':
     # Default to your folder, or override via command-line
-    DEFAULT_ROOT = r"C:\Users\Yifei\Documents\data_for_publication\test"
+    DEFAULT_ROOT = r"C:\Users\Yifei\Documents\data_for_publication\train\C10\Sorghum\Images_Stefan"
     if len(sys.argv) > 1:
         root = sys.argv[1]
     else:
