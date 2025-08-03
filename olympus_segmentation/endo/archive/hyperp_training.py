@@ -1,10 +1,10 @@
+import numpy as np
 import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 import segmentation_models_pytorch as smp
-import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.model_selection import KFold
@@ -371,7 +371,7 @@ def objective(trial, train_dataset, val_dataset, config):
     """Optuna objective function for hyperparameter optimization"""
     # Suggest hyperparameters
     lr = trial.suggest_float('lr', 1e-5, 1e-3, log=True)
-    batch_size = trial.suggest_categorical('batch_size', [16, 32])  # Reduced batch sizes
+    batch_size = trial.suggest_categorical('batch_size', [64, 128])  # Reduced batch sizes
     weight_decay = trial.suggest_float('weight_decay', 1e-6, 1e-3, log=True)
     
     # Loss function selection
@@ -1215,10 +1215,10 @@ def main():
     """Main training pipeline with all optimizations"""
     # Configuration
     config = {
-        'train_data_dir': r'C:\Users\Yifei\Documents\data_for_publication\train_preprocessed',
-        'val_data_dir': r'C:\Users\Yifei\Documents\data_for_publication\val_preprocessed',
-        'test_data_dir': r'C:\Users\Yifei\Documents\data_for_publication\test_preprocessed',
-        'output_dir': r'C:\Users\Yifei\Documents\data_for_publication\optimized_results',
+        'train_data_dir': r'C:\Users\yifei\Documents\data_for_publication\train_preprocessed',
+        'val_data_dir': r'C:\Users\yifei\Documents\data_for_publication\val_preprocessed',
+        'test_data_dir': r'C:\Users\yifei\Documents\data_for_publication\test_preprocessed',
+        'output_dir': r'C:\Users\yifei\Documents\data_for_publication\results',
         'device': torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
         'channels': ['DAPI', 'FITC', 'TRITC'],
         'n_channels': 3,

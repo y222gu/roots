@@ -1,0 +1,28 @@
+    train_data_dir: C:\Users\yifei\Documents\data_for_publication\train_preprocessed
+    test_data_dir: C:\Users\yifei\Documents\data_for_publication\test_preprocessed
+    output_dir: C:\Users\yifei\Documents\data_for_publication\results
+    device: cuda  # or cpu, set in code based on availability
+    channels:
+      - DAPI
+      - FITC
+      - TRITC
+    n_channels: 3
+    n_classes: 2
+    batch_size: 64
+    num_workers: 8
+    default_learning_rate: 1e-3
+    encoder_to_test:
+      - resnet34
+      - resnet50
+    architecture_to_test:
+      - Unet
+      - DeepLabV3Plus
+    best_encoder_name: resnet34
+    best_architecture: DeepLabV3Plus
+    model_selection_epochs: 2
+    model_selection_folds: 2
+    hyper_tune_epochs: 2
+    hyper_tune_trials: 2
+    fine_train_epochs: 100
+    patience: 15
+    seed: 42

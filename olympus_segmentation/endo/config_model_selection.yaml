@@ -1,0 +1,36 @@
+architecture_to_test:
+- DeepLabV3Plus         # Atrous convolutions
+- Unet                   # Classic baseline
+# - UnetPlusPlus          # Nested U-Net (still competitive)
+# - MAnet                 # Multi-scale Attention (2020)
+# - PAN                   # Pyramid Attention (2019)
+batch_size: 16
+best_architecture: UnetPlusPlus
+best_encoder_name: efficientnet-b4
+channels:
+- DAPI
+- FITC
+- TRITC
+default_learning_rate: 0.001
+device: cuda
+encoder_to_test:
+# - cellpose_pretrained
+# - omnipose_backbone
+# - mit_b2
+# - densenet121
+# - mobilenet_v2
+# - efficientnet-b4
+- resnet34
+- resnet50
+
+model_selection_epochs: 100
+model_selection_folds: 5
+n_channels: 3
+n_classes: 2
+num_workers: 4
+output_dir: C:\Users\yifei\Documents\data_for_publication\results
+early_stopping_patience: 10
+early_stopping_min_delta: 0.001
+seed: 42
+test_data_dir: C:\Users\yifei\Documents\data_for_publication\test_preprocessed
+train_data_dir: C:\Users\yifei\Documents\data_for_publication\train_preprocessed
