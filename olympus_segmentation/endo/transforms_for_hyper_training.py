@@ -47,26 +47,36 @@ def get_augmented_transforms(trial=None):
         # Geometric distortions (important for cross-microscope generalization)
         A.ElasticTransform(alpha=120, sigma=6, p=p_elastic),
         A.GridDistortion(num_steps=5, distort_limit=0.3, p=p_grid),
-        A.OpticalDistortion(distort_limit=0.5, p=p_optical),  # Removed shift_limit
+        A.OpticalDistortion(distort_limit=0.7, p=p_optical),  # Removed shift_limit
         
-        # Intensity variations (simulate different microscope settings)
-        A.RandomBrightnessContrast(
-            brightness_limit=0.3, contrast_limit=0.3, p=0.5
-        ),
-        A.RandomGamma(gamma_limit=(70, 130), p=0.5),
-        
+        # Intensity variations (lighter augmentation)
+        # A.RandomBrightnessContrast(
+        #     brightness_limit=0.1, contrast_limit=0.1, p=0.3
+        # ),
+        # A.RandomGamma(gamma_limit=(90, 110), p=0.2),
         # Noise and blur (simulate different imaging conditions)
-        A.GaussNoise(p=p_noise),  # Simplified - use default parameters
-        A.GaussianBlur(blur_limit=(3, 7), p=p_blur),
+        # A.GaussNoise(p=p_noise),  # Simplified - use default parameters
+        # A.GaussianBlur(blur_limit=(3, 7), p=p_blur),
         
-        # Channel-wise augmentations for fluorescence
-        A.ChannelShuffle(p=0.1),  # Only occasionally
-        A.ChannelDropout(channel_drop_range=(1, 1), p=0.1),
+        # # Channel-wise augmentations for fluorescence
+        # A.ChannelShuffle(p=0.1),  # Only occasionally
+        # A.ChannelDropout(channel_drop_range=(1, 1), p=0.1),
+        #         # dropout — keep only the core params that still exist
+        A.CoarseDropout(
+            max_holes=5,
+            max_height=64, max_width=64,
+            min_holes=1,
+            min_height=16, min_width=16,
+            fill_value=0,
+            mask_fill_value=0,
+            p=0.3,
+        ),
+
     ]
     
     return A.Compose(
         base_transforms + advanced_transforms + [
-            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),#
             ToTensorV2()
         ],
         additional_targets={

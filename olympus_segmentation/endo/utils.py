@@ -7,6 +7,8 @@ import cv2
 from torch.utils.data import Dataset
 import gc
 import time
+from matplotlib import pyplot as plt
+from transforms_for_hyper_training import get_val_transforms, get_augmented_transforms
 
 
 class ModelTrainer:
@@ -429,6 +431,29 @@ class MultiChannelSegDataset(Dataset):
         outer_minus_inner = np.clip(outer.astype(int) - inner.astype(int), 0, 1).astype(np.uint8)
         mask = np.stack([inner, outer_minus_inner], axis=-1).astype(np.float32)  # [H, W, C]
         return mask  # Now returns [H, W, C]
+    
+    def get_debug_item(self, idx):
+        img_dir, ann_path, sid = self.samples[idx]
+        raw       = self._load_image_stack(img_dir)
+        mask_raw  = self._yolo_to_inner_outer_mask(ann_path, raw.shape[:2]) if ann_path else None
+        # preproc   = self.preprocess(raw)
+
+        if mask_raw is not None and self.transform:
+            aug = self.transform(image=raw, mask=mask_raw)
+            transformed     = aug['image']
+            mask_transformed = aug['mask']
+        else:
+            transformed     = None
+            mask_transformed = None
+
+        return {
+            'sample_id': sid,
+            'raw'      : raw,
+            'preprocessed': raw,
+            'transformed' : transformed,
+            'mask_raw'    : mask_raw,
+            'mask_transformed': mask_transformed
+        }
 
 def aggressive_cleanup():
     """More aggressive memory cleanup"""
@@ -457,9 +482,108 @@ def monitor_gpu_memory():
     """Monitor and print GPU memory usage"""
     if torch.cuda.is_available():
         for i in range(torch.cuda.device_count()):
-            memory_allocated = torch.cuda.memory_allocated(i) / 1024**3  # GB
-            memory_reserved = torch.cuda.memory_reserved(i) / 1024**3   # GB
-            memory_total = torch.cuda.get_device_properties(i).total_memory / 1024**3  # GB
+            memory_allocated = torch.cuda.memory_allocated(i) / 512**3  # GB
+            memory_reserved = torch.cuda.memory_reserved(i) / 512**3   # GB
+            memory_total = torch.cuda.get_device_properties(i).total_memory / 512**3  # GB
             print(f"GPU {i}: {memory_allocated:.1f}GB/{memory_total:.1f}GB allocated, {memory_reserved:.1f}GB reserved")
     else:
         print("CUDA not available")
+
+
+
+def visualize_augmented(img, ax, channel_idx, mean=None, std=None):
+    """
+    img:   either a torch.Tensor (C,H,W) or a numpy array (H,W,C) in [0,1]
+    ax:    matplotlib Axes
+    channel_idx: which channel to display
+    mean,std: optional arrays to un-normalize [only used for torch.Tensor]
+    """
+    # 1) convert to H×W×C numpy in [0,1]
+    if isinstance(img, torch.Tensor):
+        # Tensor: C×H×W -> H×W×C
+        arr = img.permute(1,2,0).cpu().numpy()
+        if (mean is not None) and (std is not None):
+            # unnormalize
+            arr = arr * std[None,None,:] + mean[None,None,:]
+        arr = np.clip(arr, 0, 1)
+    else:
+        # assume numpy H×W×C already in [0,1]
+        arr = img
+
+    # 2) grab the requested channel and plot
+    channel = arr[..., channel_idx]
+    ax.imshow(channel, cmap='gray', vmin=0, vmax=1)
+    ax.set_xticks([]); ax.set_yticks([])
+
+
+if __name__ == '__main__':
+
+    data_dir = r'C:\Users\yifei\Documents\data_for_publication\test_preprocessed\C10\Sorghum'
+    channels = ['DAPI', 'FITC', 'TRITC']
+    transform = get_augmented_transforms()
+    dataset = MultiChannelSegDataset(data_dir, channels, transform=transform)
+
+    # Create output folder for figures
+    output_dir = r'C:\Users\yifei\Documents\debug_figures'
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Process all samples in the dataset and save figures with their sample id as filename
+    for idx in range(len(dataset)):
+        dbg = dataset.get_debug_item(idx)
+        sample_id = dbg['sample_id']
+        print("Processing Sample:", sample_id)
+        print(" raw shape:", dbg['raw'].shape, dbg['raw'].dtype)
+        print(" prep shape:", dbg['preprocessed'].shape, dbg['preprocessed'].dtype)
+        if dbg['transformed'] is not None:
+            print(" aug shape:", dbg['transformed'].shape, dbg['transformed'].dtype)
+
+        n_ch = len(channels)
+        mean = np.array([0.5]*n_ch)
+        std  = np.array([0.5]*n_ch)
+
+        # Build color overlays for raw and augmented masks
+        mask_raw = dbg['mask_raw']  # H×W×2 uint8
+        mask_aug = dbg['mask_transformed']  # H×W×2 uint8
+        mask_raw_overlay = np.zeros((*mask_raw.shape[:2], 3), dtype=np.uint8)
+        mask_raw_overlay[mask_raw[...,0]==1] = [255, 0, 0]   # blue for inner (BGR)
+        mask_raw_overlay[mask_raw[...,1]==1] = [0,   0, 255]   # red for outer-only
+
+        if mask_aug is not None:
+            mask_aug_overlay = np.zeros((*mask_aug.shape[:2], 3), dtype=np.uint8)
+            mask_aug_overlay[mask_aug[...,0]==1] = [255, 0, 0]   # blue for inner (BGR)
+            mask_aug_overlay[mask_aug[...,1]==1] = [0,   0, 255]   # red for outer-only
+
+        alpha = 0.5
+
+        # Create figure with 3 rows for RAW, PREP, and AUG views
+        fig, axes = plt.subplots(3, n_ch, figsize=(4*n_ch, 12))
+        for ch_idx, ch in enumerate(dataset.channels):
+            # RAW view with overlay
+            axes[0, ch_idx].imshow(dbg['raw'][..., ch_idx], cmap='gray')
+            axes[0, ch_idx].imshow(mask_raw_overlay, alpha=alpha)
+            axes[0, ch_idx].set_title(f"RAW {ch}")
+            axes[0, ch_idx].axis('off')
+
+            # Preprocessed view
+            axes[1, ch_idx].imshow(dbg['preprocessed'][..., ch_idx], cmap='gray')
+            axes[1, ch_idx].set_title(f"PREP {ch}")
+            axes[1, ch_idx].axis('off')
+
+            # Transformed view with overlay if available
+            if dbg['transformed'] is not None:
+                img_t = dbg['transformed']        # torch.Tensor (C,H,W)
+                visualize_augmented(img_t, axes[2, ch_idx], ch_idx, mean, std)
+                axes[2, ch_idx].set_title(f"AUG {ch}")
+                if mask_aug is not None:
+                    axes[2, ch_idx].imshow(mask_aug_overlay, alpha=alpha)
+                axes[2, ch_idx].axis('off')
+            else:
+                axes[2, ch_idx].text(0.5, 0.5, 'no transform', ha='center', va='center')
+                axes[2, ch_idx].axis('off')
+
+        plt.tight_layout()
+        out_path = os.path.join(output_dir, f"{sample_id}.png")
+        plt.savefig(out_path)
+        plt.close(fig)
+
+    print("Debug item inspection complete. Figures saved to", output_dir)

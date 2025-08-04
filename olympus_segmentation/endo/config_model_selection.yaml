@@ -1,10 +1,10 @@
 architecture_to_test:
-- DeepLabV3Plus         # Atrous convolutions
+# - DeepLabV3Plus         # Atrous convolutions
 - Unet                   # Classic baseline
 # - UnetPlusPlus          # Nested U-Net (still competitive)
 # - MAnet                 # Multi-scale Attention (2020)
 # - PAN                   # Pyramid Attention (2019)
-batch_size: 16
+batch_size: 32
 best_architecture: UnetPlusPlus
 best_encoder_name: efficientnet-b4
 channels:
@@ -17,13 +17,13 @@ encoder_to_test:
 # - cellpose_pretrained
 # - omnipose_backbone
 # - mit_b2
-# - densenet121
-# - mobilenet_v2
-# - efficientnet-b4
+- densenet121
+- mobilenet_v2
+- efficientnet-b4
 - resnet34
 - resnet50
 
-model_selection_epochs: 100
+model_selection_epochs: 200
 model_selection_folds: 5
 n_channels: 3
 n_classes: 2

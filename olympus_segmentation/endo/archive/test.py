@@ -85,13 +85,13 @@ if __name__ == '__main__':
     # --- config ---
     test_data_dir = r'C:\Users\Yifei\Documents\data_for_publication\test_preprocessed'
     # save each channel separately to a specific folder
-    output_folder = r'C:\Users\Yifei\Documents\data_for_publication\results\test_preprocessed_results'
+    output_folder = r'C:\Users\Yifei\Documents\data_for_publication\results'
     os.makedirs(output_folder, exist_ok=True)
     model_name    = 'unet_resnet34'   # or whichever you just trained
     channels      = ['DAPI','FITC','TRITC']
     best_model_path = os.path.join(
-        r'C:\Users\Yifei\Documents\data_for_publication\results\unet_resnet34_DAPI_FITC_TRITC',
-        f'best_model_{model_name}_{"_".join(channels)}.pth'
+        r'C:\Users\yifei\Documents\data_for_publication\results\models\Unet_resnet34',
+        f'best_model_dice_0.9199_epoch_20.pth'
     )
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
