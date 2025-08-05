@@ -10,6 +10,7 @@ from pathlib import Path
 from utils import MultiChannelSegDataset, create_model
 from transforms_for_hyper_training import get_val_transforms
 from loss_functions import DiceBCELoss
+from pathlib import Path
 
 
 def load_model(checkpoint_path, device):
@@ -84,50 +85,68 @@ def save_predictions(imgs, probs, masks, sample_ids, output_dir, batch_idx):
         sample_id = sample_ids[i] if isinstance(sample_ids, (list, tuple)) else f"batch_{batch_idx}_sample_{i}"
         
         # Create figure with input, prediction, ground truth, and overlay
-        fig, axes = plt.subplots(1, 4, figsize=(16, 4))
-        
-        # Input image (first channel)
-        axes[0].imshow(imgs_np[i, 0], cmap='gray')
-        axes[0].set_title(f'Input\n{sample_id}')
-        axes[0].axis('off')
-        
+        fig, axes = plt.subplots(1, 3, figsize=(16, 8))
+        axes = axes.flatten()
+
+        # # Input image (first channel)
+        # rgb_img = np.transpose(imgs_np[i][:3], (1, 2, 0))
+        # axes[0].imshow(rgb_img)
+        # axes[0].set_title(f'Input RGB\n{sample_id}')
+        # axes[0].axis('off')
+
+        # Ground truth overlay
+        gt_overlay = np.zeros((*masks_np.shape[2:], 3), dtype=np.uint8)
+        if masks_np.shape[1] >= 2:
+            gt_overlay[masks_np[i, 0] == 1] = [0, 0, 255]  # Blue for class 0
+            gt_overlay[masks_np[i, 1] == 1] = [255, 0, 255]  # Magenta for class 1
+        # axes[0].imshow(gt_overlay)
+        # axes[0].set_title('Ground Truth')
+        # axes[0].axis('off')
+
         # Prediction overlay
         pred_binary = (probs_np[i] > 0.5).astype(np.uint8)
         pred_overlay = np.zeros((*pred_binary.shape[1:], 3), dtype=np.uint8)
         if pred_binary.shape[0] >= 2:
-            pred_overlay[pred_binary[0] == 1] = [255, 0, 0]  # Red for class 0
-            pred_overlay[pred_binary[1] == 1] = [0, 255, 0]  # Green for class 1
-        axes[1].imshow(pred_overlay)
-        axes[1].set_title('Prediction')
-        axes[1].axis('off')
-        
-        # Ground truth overlay
-        gt_overlay = np.zeros((*masks_np.shape[2:], 3), dtype=np.uint8)
-        if masks_np.shape[1] >= 2:
-            gt_overlay[masks_np[i, 0] == 1] = [255, 0, 0]  # Red for class 0
-            gt_overlay[masks_np[i, 1] == 1] = [0, 255, 0]  # Green for class 1
-        axes[2].imshow(gt_overlay)
-        axes[2].set_title('Ground Truth')
-        axes[2].axis('off')
-        
+            pred_overlay[pred_binary[0] == 1] = [0, 0, 255]  # Blue for class 0
+            pred_overlay[pred_binary[1] == 1] = [255, 0, 255]  # Magenta for class 1
+        # axes[1].imshow(pred_overlay)
+        # axes[1].set_title('Prediction')
+        # axes[1].axis('off')
+
         # Combined overlay on input
-        axes[3].imshow(imgs_np[i, 0], cmap='gray', alpha=0.7)
-        axes[3].imshow(pred_overlay, alpha=0.5)
-        axes[3].set_title('Prediction on Input')
-        axes[3].axis('off')
-        
-        plt.tight_layout()
-        plt.savefig(output_dir / f'{sample_id}_overlay.png', dpi=150, bbox_inches='tight')
+        axes[0].imshow(imgs_np[i, 0], cmap='gray', alpha=0.7)
+        axes[0].imshow(pred_overlay, alpha=0.5)
+        axes[0].set_title('Prediction on DAPI Channel')
+        axes[0].axis('off')
+
+        axes[1].imshow(imgs_np[i, 1], cmap='gray', alpha=0.7)
+        axes[1].imshow(pred_overlay, alpha=0.5)
+        axes[1].set_title('Prediction on FITC Channel')
+        axes[1].axis('off')
+
+        axes[2].imshow(imgs_np[i, 2], cmap='gray', alpha=0.7)
+        axes[2].imshow(pred_overlay, alpha=0.5)
+        axes[2].set_title('Prediction on TRITC Channel')
+        axes[2].axis('off')
+
+        # Remove gap between subplots and extra margins
+        plt.subplots_adjust(wspace=0, hspace=0)
+        plt.savefig(output_dir / f'{sample_id}_overlay.png', dpi=150, bbox_inches='tight', pad_inches=0)
         plt.close()
 
 
 def run_inference(model, test_loader, device, save_images=False, output_dir=None):
-    """Run inference and compute metrics"""
+    """Run inference and compute metrics, saving per-image metrics to a JSON file if output_dir is provided."""
     
+    import json  # Import here if not already imported at the top of the file
+
     loss_fn = DiceBCELoss()
     all_metrics = {'dice': [], 'iou': [], 'precision': [], 'recall': [], 'f1': [], 'accuracy': []}
     total_loss = 0.0
     num_samples = 0
+
+    # To store per-image metrics
+    all_sample_metrics = []
     
     print("Running inference...")
     
@@ -148,9 +167,9 @@ def run_inference(model, test_loader, device, save_images=False, output_dir=None
             logits = model(imgs)
             probs = torch.sigmoid(logits)
             
-            # Save overlay images if requested
-            if save_images and output_dir:
-                save_predictions(imgs, probs, masks, sample_ids, output_dir, batch_idx)
+            # # Save overlay images if requested
+            # if save_images and output_dir:
+            #     save_predictions(imgs, probs, masks, sample_ids, output_dir, batch_idx)
             
             # Compute loss
             loss = loss_fn(logits, masks)
@@ -160,13 +179,38 @@ def run_inference(model, test_loader, device, save_images=False, output_dir=None
             # Compute metrics for this batch
             batch_metrics = compute_metrics(probs, masks)
             
-            # Accumulate metrics
+            # Accumulate metrics across batches
             for key in all_metrics:
                 all_metrics[key].extend(batch_metrics[key])
+            
+            # Save per-image metrics for this batch
+            batch_size = imgs.size(0)
+            for i in range(batch_size):
+                # Use provided sample_ids if available, else generate one
+                current_id = sample_ids[i] if isinstance(sample_ids, (list, tuple)) else f"batch_{batch_idx}_sample_{i}"
+                image_metrics = {
+                    'sample_id': current_id,
+                    'dice': batch_metrics['dice'][i],
+                    'iou': batch_metrics['iou'][i],
+                    'precision': batch_metrics['precision'][i],
+                    'recall': batch_metrics['recall'][i],
+                    'f1': batch_metrics['f1'][i],
+                    'accuracy': batch_metrics['accuracy'][i]
+                }
+                all_sample_metrics.append(image_metrics)
     
     # Calculate final averages
     avg_loss = total_loss / num_samples if num_samples > 0 else 0
     final_metrics = {key: np.mean(values) for key, values in all_metrics.items()}
+    
+    # Save per-image metrics to a JSON file if output_dir is provided
+    if output_dir:
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        metrics_json_path = output_dir / "image_metrics.json"
+        with open(metrics_json_path, "w") as f:
+            json.dump(all_sample_metrics, f, indent=4, default=lambda o: float(o) if isinstance(o, np.float32) else o)
+        print(f"Per-image metrics saved to: {metrics_json_path}")
     
     return avg_loss, final_metrics
 
@@ -190,9 +234,9 @@ def main():
     """Main inference function"""
     
     # MODIFY THESE PATHS
-    checkpoint_path = r"C:\Users\yifei\Documents\data_for_publication\results\models\Unet_resnet34\best_model_dice_0.9199_epoch_20.pth"
-    test_data_dir = r"C:\Users\yifei\Documents\data_for_publication\train_preprocessed"
-    output_dir = r"C:\Users\yifei\Documents\data_for_publication\results\inference_overlays"
+    checkpoint_path = r"C:\Users\Yifei\Documents\data_for_publication\results\models\Unet_resnet34\best_model_loss_0.0996_dice_0.9248_epoch_134.pth"
+    test_data_dir = r"C:\Users\Yifei\Documents\data_for_publication\test_preprocessed\C10\Rice\WT"
+    output_dir = r"C:\Users\Yifei\Documents\data_for_publication\results\inference_overlays"
 
     # Configuration
     channels = ['DAPI', 'FITC', 'TRITC']
@@ -217,7 +261,7 @@ def main():
         test_dataset,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=2,
+        num_workers=4,
         pin_memory=True
     )
     
