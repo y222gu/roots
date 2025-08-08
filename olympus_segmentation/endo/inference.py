@@ -37,7 +37,7 @@ def load_model(checkpoint_path, device):
     return model
 
 
-def compute_metrics(preds, targets, threshold=0.5):
+def compute_metrics(preds, targets, threshold=0.99):
     """Compute segmentation metrics"""
     preds_binary = (preds > threshold).float()
     
@@ -85,7 +85,7 @@ def save_predictions(imgs, probs, masks, sample_ids, output_dir, batch_idx):
         sample_id = sample_ids[i] if isinstance(sample_ids, (list, tuple)) else f"batch_{batch_idx}_sample_{i}"
         
         # Create figure with input, prediction, ground truth, and overlay
-        fig, axes = plt.subplots(1, 3, figsize=(16, 8))
+        fig, axes = plt.subplots(1, 2, figsize=(16, 8))
         axes = axes.flatten()
 
         # # Input image (first channel)
@@ -99,20 +99,26 @@ def save_predictions(imgs, probs, masks, sample_ids, output_dir, batch_idx):
         if masks_np.shape[1] >= 2:
             gt_overlay[masks_np[i, 0] == 1] = [0, 0, 255]  # Blue for class 0
             gt_overlay[masks_np[i, 1] == 1] = [255, 0, 255]  # Magenta for class 1
-        # axes[0].imshow(gt_overlay)
-        # axes[0].set_title('Ground Truth')
-        # axes[0].axis('off')
+        axes[0].imshow(gt_overlay)
+        axes[0].set_title('Ground Truth')
+        axes[0].axis('off')
 
         # Prediction overlay
-        pred_binary = (probs_np[i] > 0.5).astype(np.uint8)
+        pred_binary = (probs_np[i] > 0.99).astype(np.uint8)
         pred_overlay = np.zeros((*pred_binary.shape[1:], 3), dtype=np.uint8)
         if pred_binary.shape[0] >= 2:
             pred_overlay[pred_binary[0] == 1] = [0, 0, 255]  # Blue for class 0
             pred_overlay[pred_binary[1] == 1] = [255, 0, 255]  # Magenta for class 1
-        # axes[1].imshow(pred_overlay)
-        # axes[1].set_title('Prediction')
-        # axes[1].axis('off')
+        axes[1].imshow(pred_overlay)
+        axes[1].set_title('Prediction')
+        axes[1].axis('off')
 
+        plt.subplots_adjust(wspace=0, hspace=0)
+        plt.savefig(output_dir / f'{sample_id}_masks.png', dpi=150, bbox_inches='tight', pad_inches=0)
+        plt.close()
+
+        fig, axes = plt.subplots(1, 3, figsize=(16, 8))
+        axes = axes.flatten()
         # Combined overlay on input
         axes[0].imshow(imgs_np[i, 0], cmap='gray', alpha=0.7)
         axes[0].imshow(pred_overlay, alpha=0.5)
@@ -168,8 +174,8 @@ def run_inference(model, test_loader, device, save_images=False, output_dir=None
             probs = torch.sigmoid(logits)
             
             # # Save overlay images if requested
-            # if save_images and output_dir:
-            #     save_predictions(imgs, probs, masks, sample_ids, output_dir, batch_idx)
+            if save_images and output_dir:
+                save_predictions(imgs, probs, masks, sample_ids, output_dir, batch_idx)
             
             # Compute loss
             loss = loss_fn(logits, masks)
@@ -234,9 +240,9 @@ def main():
     """Main inference function"""
     
     # MODIFY THESE PATHS
-    checkpoint_path = r"C:\Users\Yifei\Documents\data_for_publication\results\models\Unet_resnet34\best_model_loss_0.0996_dice_0.9248_epoch_134.pth"
-    test_data_dir = r"C:\Users\Yifei\Documents\data_for_publication\test_preprocessed\C10\Rice\WT"
-    output_dir = r"C:\Users\Yifei\Documents\data_for_publication\results\inference_overlays"
+    checkpoint_path = r"C:\Users\yifei\Documents\data_for_publication\results\models\Unet_resnet34_2025_08_05_trained_without_channel_dropout\best_model_loss_0.1219_dice_0.9184_epoch_202.pth"
+    test_data_dir = r"C:\Users\yifei\Documents\data_for_publication\test_preprocessed\Zeiss"
+    output_dir = r"C:\Users\yifei\Documents\data_for_publication\results\inference_overlays"
 
     # Configuration
     channels = ['DAPI', 'FITC', 'TRITC']

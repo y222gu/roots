@@ -17,7 +17,7 @@ def select_model_with_train_val_split(dataset, config):
     
     # Calculate split sizes
     dataset_size = len(dataset)
-    train_size = int(0.8 * dataset_size)
+    train_size = int(0.85 * dataset_size)
     val_size = dataset_size - train_size
     
     print(f"Dataset size: {dataset_size}")
@@ -108,18 +108,23 @@ def select_model_with_train_val_split(dataset, config):
                     
                 # Training setup
                 loss_fn = DiceBCELoss()
-                optimizer = optim.AdamW(model.parameters(), lr=config['default_learning_rate'])
+                optimizer = optim.AdamW(
+                    model.parameters(),
+                    lr=config['default_learning_rate']
+                )
+
                 trainer = ModelTrainer(model, config['device'], loss_fn, optimizer, scheduler=None)
 
-                # Early stopping setup
+                # Early stopping setup - using 'min' mode for validation loss
                 early_stopping = EarlyStopping(
                     patience=config['early_stopping_patience'],
                     min_delta=config['early_stopping_min_delta'],
-                    mode='max'
+                    mode='min'  # Changed to 'min' for loss (lower is better)
                 )
 
                 # Training loop with early stopping
                 best_dice = 0.0
+                best_val_loss = float('inf')  # Track best (lowest) validation loss
                 best_epoch = 0
                 max_epochs = config['model_selection_epochs']
                 
@@ -158,10 +163,11 @@ def select_model_with_train_val_split(dataset, config):
                     detailed_metrics[config_key]['learning_rates'].append(current_lr)
                     detailed_metrics[config_key]['epoch_times'].append(epoch_time)
                     
-                    # Update best model if improved
+                    # Update best model if validation loss improved (lower is better)
                     model_saved = False
-                    if val_metrics['dice'] > best_dice:
-                        best_dice = val_metrics['dice']
+                    if val_loss < best_val_loss:
+                        best_val_loss = val_loss
+                        best_dice = val_metrics['dice']  # Update dice for this best loss model
                         best_epoch = epoch
                         
                         # Remove old model and save new best
@@ -170,7 +176,7 @@ def select_model_with_train_val_split(dataset, config):
                             if os.path.exists(old_path):
                                 os.remove(old_path)
                         
-                        best_model_filename = f'best_model_dice_{val_metrics["dice"]:.4f}_epoch_{epoch:02d}.pth'
+                        best_model_filename = f'best_model_loss_{val_loss:.4f}_dice_{val_metrics["dice"]:.4f}_epoch_{epoch:02d}.pth'
                         best_model_path = os.path.join(config_models_dir, best_model_filename)
                         
                         checkpoint = {
@@ -180,7 +186,7 @@ def select_model_with_train_val_split(dataset, config):
                             'train_metrics': train_metrics, 'val_metrics': val_metrics,
                             'config_key': config_key,
                             'architecture': arch, 'encoder': encoder,
-                            'best_dice': best_dice, 'best_epoch': epoch,
+                            'best_val_loss': best_val_loss, 'best_dice': best_dice, 'best_epoch': epoch,
                             'train_size': train_size, 'val_size': val_size
                         }
                         
@@ -188,20 +194,22 @@ def select_model_with_train_val_split(dataset, config):
                         detailed_metrics[config_key]['best_model_path'] = best_model_path
                         model_saved = True
                     
-                    # Early stopping check
-                    improved = early_stopping(val_metrics['dice'])
+                    save_incremental_metrics(results, detailed_metrics, config_key, output_dir)
+
+                    # Early stopping check - using validation loss
+                    improved = early_stopping(val_loss)
                     
                     # Clean logging
                     status = "💾" if model_saved else f"({early_stopping.counter}/{early_stopping.patience})"
                     print(f"Epoch {epoch:2d} | Train: {train_loss:.4f}/{train_metrics.get('dice', 0):.4f} | "
-                          f"Val: {val_loss:.4f}/{val_metrics.get('dice', 0):.4f} | Best: {best_dice:.4f} | {status}")
+                          f"Val: {val_loss:.4f}/{val_metrics.get('dice', 0):.4f} | Best Loss: {best_val_loss:.4f} | {status}")
                     
                     # Early stopping
                     if early_stopping.early_stop:
-                        print(f"Early stopping at epoch {epoch} | Best: {best_dice:.4f} (epoch {best_epoch})")
+                        print(f"Early stopping at epoch {epoch} (val_loss plateau) | Best loss: {best_val_loss:.4f} (epoch {best_epoch})")
                         detailed_metrics[config_key]['early_stopped'] = True
                         detailed_metrics[config_key]['early_stop_epoch'] = epoch
-                        detailed_metrics[config_key]['early_stop_reason'] = f"No improvement for {early_stopping.patience} epochs"
+                        detailed_metrics[config_key]['early_stop_reason'] = f"Val loss no improvement for {early_stopping.patience} epochs"
                         break
                     
                     cleanup_memory()
@@ -216,6 +224,7 @@ def select_model_with_train_val_split(dataset, config):
                 results[config_key] = {
                     'architecture': arch,
                     'encoder': encoder,
+                    'best_val_loss': best_val_loss,
                     'best_dice': best_dice,
                     'best_epoch': best_epoch,
                     'final_metrics': val_metrics,
@@ -230,12 +239,12 @@ def select_model_with_train_val_split(dataset, config):
                     'val_size': val_size
                 }
                 
-                # Track best overall configuration
-                if best_dice > best_overall_dice:
-                    best_overall_dice = best_dice
+                # Track best overall configuration (by lowest validation loss)
+                if best_val_loss < best_overall_dice:  # Reusing variable but now for loss
+                    best_overall_dice = best_val_loss  # Now stores best loss
                     best_overall_config = config_key
                 
-                print(f"{config_key}: Best Dice {best_dice:.4f} at epoch {best_epoch}"
+                print(f"{config_key}: Best Loss {best_val_loss:.4f} (Dice: {best_dice:.4f}) at epoch {best_epoch}"
                       f"{' (Early stopped)' if detailed_metrics[config_key]['early_stopped'] else ''}")
                 
             except Exception as e:
@@ -243,6 +252,7 @@ def select_model_with_train_val_split(dataset, config):
                 results[config_key] = {
                     'architecture': arch,
                     'encoder': encoder,
+                    'best_val_loss': float('inf'),
                     'best_dice': 0.0,
                     'failed': True,
                     'error': str(e),
@@ -290,11 +300,13 @@ def select_model_with_train_val_split(dataset, config):
         valid_results = {k: v for k, v in results.items() if not v.get('failed', False)}
         
         if valid_results:
-            best_config = max(valid_results.keys(), key=lambda k: valid_results[k]['best_dice'])
+            # Select best configuration by lowest validation loss
+            best_config = min(valid_results.keys(), key=lambda k: valid_results[k]['best_val_loss'])
             best_results = valid_results[best_config]
             
             print(f"\n🏆 BEST CONFIGURATION: {best_config}")
-            print(f"Best Dice: {best_results['best_dice']:.4f}")
+            print(f"Best Validation Loss: {best_results['best_val_loss']:.4f}")
+            print(f"Corresponding Dice: {best_results['best_dice']:.4f}")
             print(f"Best Epoch: {best_results['best_epoch']}")
             print(f"Early stopped: {best_results['early_stopped']}")
             if best_results['early_stopped']:
@@ -375,11 +387,13 @@ def save_final_results(results, detailed_metrics, output_dir):
     # Find best configuration
     valid_results = {k: v for k, v in results.items() if not v.get('failed', False)}
     if valid_results:
-        best_config = max(valid_results.keys(), key=lambda k: valid_results[k]['best_dice'])
+        # Select best configuration by lowest validation loss
+        best_config = min(valid_results.keys(), key=lambda k: valid_results[k]['best_val_loss'])
         summary['best_configuration'] = {
             'config_name': best_config,
             'architecture': valid_results[best_config]['architecture'],
             'encoder': valid_results[best_config]['encoder'],
+            'best_val_loss': valid_results[best_config]['best_val_loss'],
             'best_dice': valid_results[best_config]['best_dice'],
             'best_epoch': valid_results[best_config]['best_epoch'],
             'early_stopped': valid_results[best_config]['early_stopped'],
@@ -432,8 +446,8 @@ def main():
     print("\n" + "="*70)
     print("STEP 1: Model Selection with Train/Validation Split and Early Stopping")
     print("="*70)
-    print(f"Using 80/20 train/validation split with seed: {config['seed']}")
-    print(f"Early stopping patience: {config['early_stopping_patience']} epochs")
+    print(f"Using 85/15 train/validation split with seed: {config['seed']}")
+    print(f"Early stopping patience: {config['early_stopping_patience']} epochs (based on validation loss)")
     
     results, best_config = select_model_with_train_val_split(train_dataset, config)
 
@@ -446,7 +460,8 @@ def main():
         print(f"Results saved to: {config['output_dir']}")
         print(f"Best Architecture: {best_arch}")
         print(f"Best Encoder: {best_encoder}")
-        print(f"Best Dice Score: {results['best_dice']:.4f}")
+        print(f"Best Validation Loss: {results['best_val_loss']:.4f}")
+        print(f"Corresponding Dice Score: {results['best_dice']:.4f}")
         print(f"Best Model Path: {results['best_model_path']}")
     else:
         print("Model selection failed - no valid configurations found!")

@@ -11,25 +11,25 @@ channels:
 - DAPI
 - FITC
 - TRITC
-default_learning_rate: 0.001
+default_learning_rate: 0.0001
 device: cuda
 encoder_to_test:
 # - cellpose_pretrained
 # - omnipose_backbone
 # - mit_b2
-- densenet121
-- mobilenet_v2
-- efficientnet-b4
+# - densenet121
+# - mobilenet_v2
 - resnet34
-- resnet50
+# - resnet50
+# - efficientnet-b4
 
-model_selection_epochs: 200
+model_selection_epochs: 250
 model_selection_folds: 5
 n_channels: 3
 n_classes: 2
 num_workers: 4
 output_dir: C:\Users\yifei\Documents\data_for_publication\results
-early_stopping_patience: 10
+early_stopping_patience: 25
 early_stopping_min_delta: 0.001
 seed: 42
 test_data_dir: C:\Users\yifei\Documents\data_for_publication\test_preprocessed

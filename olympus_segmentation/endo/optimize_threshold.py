@@ -383,7 +383,7 @@ def load_model_and_optimize_threshold(model_path, config_path, output_dir):
     
     # Create the same train/validation split as during training
     dataset_size = len(full_dataset)
-    train_size = int(0.8 * dataset_size)  # Updated to match your training code (80/20 split)
+    train_size = int(0.85 * dataset_size)  # Updated to match your training code (80/20 split)
     val_size = dataset_size - train_size
     
     print(f"Dataset size: {dataset_size}")
@@ -420,6 +420,17 @@ def load_model_and_optimize_threshold(model_path, config_path, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     
     # Save results
+    # Convert all numpy float32 values to Python float for JSON serialization
+    def convert_numpy_types(obj):
+        if isinstance(obj, dict):
+            return {k: convert_numpy_types(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_numpy_types(v) for v in obj]
+        elif isinstance(obj, np.generic):
+            return obj.item()
+        else:
+            return obj
+
     optimization_results = {
         'model_path': model_path,
         'model_config': {
@@ -436,22 +447,22 @@ def load_model_and_optimize_threshold(model_path, config_path, output_dir):
             'seed_used': config['seed']
         },
         'threshold_optimization': {
-            'best_threshold': best_threshold,
-            'best_dice': threshold_results[best_threshold]['dice'],
-            'best_iou': threshold_results[best_threshold]['iou'],
-            'best_precision': threshold_results[best_threshold]['precision'],
-            'best_recall': threshold_results[best_threshold]['recall'],
-            'best_f1': threshold_results[best_threshold]['f1'],
-            'all_thresholds': {float(k): v for k, v in threshold_results.items()}
+            'best_threshold': float(best_threshold),
+            'best_dice': float(threshold_results[best_threshold]['dice']),
+            'best_iou': float(threshold_results[best_threshold]['iou']),
+            'best_precision': float(threshold_results[best_threshold]['precision']),
+            'best_recall': float(threshold_results[best_threshold]['recall']),
+            'best_f1': float(threshold_results[best_threshold]['f1']),
+            'all_thresholds': {float(k): convert_numpy_types(v) for k, v in threshold_results.items()}
         }
     }
     
-    # Save to JSON
-    results_path = os.path.join(output_dir, 'threshold_optimization_results.json')
-    with open(results_path, 'w') as f:
-        json.dump(optimization_results, f, indent=2)
+    # # Save to JSON
+    # results_path = os.path.join(output_dir, 'threshold_optimization_results.json')
+    # with open(results_path, 'w') as f:
+    #     json.dump(optimization_results, f, indent=2)
     
-    print(f"\nResults saved to: {results_path}")
+    # print(f"\nResults saved to: {results_path}")
     
     # Create and save plots
     plot_threshold_analysis(threshold_results, best_threshold, output_dir)
@@ -537,38 +548,20 @@ def main():
     # Update these paths to match your actual file locations
     
     # Option 1: If you know the exact model path, use it directly
-    model_path = "/Users/yifeigu/Documents/Siobhan_Lab/roots/best_model_unet_resnet34_DAPI_FITC_TRITC.pth"
-    
+    model_path = r"C:\Users\yifei\Documents\data_for_publication\results\models\Unet_resnet34_2025_08_05_trained_without_channel_dropout\best_model_loss_0.1219_dice_0.9184_epoch_202.pth"
+
     # Option 2: If your model is in a subdirectory from your training output, use relative path
     # model_path = "outputs/models/UNet_resnet34/best_model_loss_0.1234_dice_0.8765_epoch_15.pth"
     
     # Option 3: Auto-find the most recent model (uncomment to use)
     # model_path = find_latest_model()
     
-    config_path = "/Users/yifeigu/Documents/Siobhan_Lab/roots/olympus_segmentation/endo/config_model_selection.yaml"
-    output_dir = "/Users/yifeigu/Documents/Siobhan_Lab/threshold_optimization_results"
+    config_path = r"C:\Users\yifei\Documents\roots\olympus_segmentation\endo\config_model_selection.yaml"
+    output_dir = r"C:\Users\yifei\Documents\data_for_publication\results\models\Unet_resnet34_2025_08_05_trained_without_channel_dropout\threshold_optimization_results"
     
     # Check if files exist
     if not os.path.exists(model_path):
         print(f"Error: Model file not found at {model_path}")
-        print("\nLet me help you find your model files...")
-        
-        # Try to auto-find models
-        found_model = find_latest_model([
-            "/Users/yifeigu/Documents/Siobhan_Lab/roots",
-            "/Users/yifeigu/Documents/Siobhan_Lab/roots/outputs",
-            "/Users/yifeigu/Documents/Siobhan_Lab/roots/models",
-            "/Users/yifeigu/Documents/Siobhan_Lab/roots/olympus_segmentation/endo",
-        ])
-        
-        if found_model:
-            print(f"\nSuggested model path: {found_model}")
-            print("Update the model_path variable in the script with this path and run again.")
-        else:
-            print("\nNo model files found. Please check:")
-            print("1. Did your training complete successfully?")
-            print("2. Check your training output directory for .pth files")
-            print("3. Update the model_path variable with the correct path")
         return
     
     if not os.path.exists(config_path):
