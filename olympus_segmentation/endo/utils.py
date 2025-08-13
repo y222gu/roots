@@ -306,8 +306,12 @@ class MultiChannelSegDataset(Dataset):
                 print(f"[Skipping] no annotation for {sample_id}")
                 continue
 
+            microscope = parent.split(os.path.sep)[-4]  # Get microscope name from folder structure
+            species = parent.split(os.path.sep)[-3]      # Get species name from folder structure
+            genotype = parent.split(os.path.sep)[-2]           # Get genotype from sample ID
+
             ann_path = os.path.join(parent, ann_file) if ann_file else None
-            self.samples.append((root, ann_path, sample_id))
+            self.samples.append((root, ann_path, sample_id, microscope, species, genotype))
 
         print(f"[Dataset] Found {len(self.samples)} samples under {data_dir}")
 
@@ -316,7 +320,13 @@ class MultiChannelSegDataset(Dataset):
 
     def __getitem__(self, idx):
         try:
-            img_dir, ann_path, sid = self.samples[idx]
+            img_dir, ann_path, sid, microscope, species, genotype = self.samples[idx]
+            meta_data = {
+                'sample_id': sid,
+                'microscope': microscope,
+                'species': species,
+                'genotype': genotype
+            }
             image = self._load_image_stack(img_dir)         #  CxH×W float32
 
             mask = self._yolo_to_inner_outer_mask(ann_path, image.shape[:2]) if ann_path else None
@@ -351,7 +361,7 @@ class MultiChannelSegDataset(Dataset):
                     image = torch.from_numpy(image_resized.copy()).permute(2, 0, 1).float().contiguous()  # H,W,C -> C,H,W
                     mask = torch.from_numpy(mask_resized.copy()).permute(2, 0, 1).float().contiguous()    # H,W,C -> C,H,W
 
-                return image, mask, sid
+                return image, mask, meta_data
             else:
                 # Handle case with no mask
                 if self.transform:
@@ -376,8 +386,8 @@ class MultiChannelSegDataset(Dataset):
                 # Verify tensor shape is correct
                 assert image.shape[1:] == (1024, 1024), f"Image shape mismatch: {image.shape}"
 
-                return image, sid
-                
+                return image, meta_data
+
         except Exception as e:
             print(f"Error loading sample {idx}: {e}")
             return None
