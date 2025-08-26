@@ -3,16 +3,16 @@ import torch
 import segmentation_models_pytorch as smp
 from torch.utils.data import DataLoader
 from aere_dataset import BinarySegDataset
-from olympus_segmentation.endo.transforms import get_val_transforms
-from olympus_segmentation.aere.visualizing_aere_with_binary_models import visualize_all_predictions_without_manual_annotation
+from transforms import get_val_transforms
+from visualizing_aere_with_binary_models import visualize_all_predictions_without_manual_annotation
 from torchvision import models
 
 # --------------------- Main ---------------------
 if __name__ == '__main__':
     # Set your directories.
     channels = ['DAPI', 'FITC', 'TRITC']
-    aere_model_path =os.path.join(os.path.dirname(__file__), "weights", 'aere_binary_model_trained_on_tamera.pth') # or 'aere_binary_model_trained_on_stefan.pth'
-    root_model_path = os.path.join(os.path.dirname(__file__), "weights", 'whole_root_binary_model_trained_tamera.pth')
+    aere_model_path =r'C:\Users\Yifei\Documents\roots\olympus_segmentation\weights\aere_binary_model_trained_on_tamera.pth' # or 'aere_binary_model_trained_on_stefan.pth'
+    root_model_path = r'C:\Users\Yifei\Documents\roots\olympus_segmentation\weights\whole_root_binary_model_trained_tamera.pth'
     data_folder = r'C:\Users\Yifei\Documents\new_aere_model_training_on_tamera\val'         # Contains subfolders: image, annotation. Image folder contains another layer of subfolders for each sample. Each sample folder contains 3-channel images.
     output_folder = r'C:\Users\Yifei\Documents\new_aere_model_training_on_tamera\results'          # Directory to save the prediction results.
     if not os.path.exists(output_folder):
@@ -44,5 +44,5 @@ if __name__ == '__main__':
 
     # Plot predictions on a new images without manual annotation dataset.
     results_folder = os.path.join(output_folder)
-    visualize_all_predictions_without_manual_annotation(aere_model, whole_root_model, channels, val_dataset, results_folder)
+    visualize_all_predictions_without_manual_annotation(aere_model, whole_root_model, val_dataset, results_folder)
     print("All predictions plotted and saved.")
