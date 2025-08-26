@@ -13,6 +13,13 @@ def get_val_transforms():
             "mask": "mask"
         })
 
+def get_org_transforms():
+    """Transforms for original image (no augmentation) - FIXED"""
+    return A.Compose([
+        A.Resize(1024, 1024),  # This ensures all images are the same size
+        ToTensorV2()
+    ])
+
 def get_augmented_transforms(trial=None):
     """Advanced augmentation pipeline for microscopy images - FIXED"""
     # Base augmentations - ALWAYS start with resize to ensure consistent size

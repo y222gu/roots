@@ -13,6 +13,7 @@ class DiceBCELoss(nn.Module):
         self.bce_weight = bce_weight
 
     def forward(self, logits, targets):
+        targets = targets.float()
         return self.dice_weight * self.dice(logits, targets) + \
                self.bce_weight * self.bce(logits, targets)
 

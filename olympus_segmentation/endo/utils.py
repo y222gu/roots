@@ -9,6 +9,8 @@ import gc
 import time
 from matplotlib import pyplot as plt
 from transforms_for_hyper_training import get_val_transforms, get_augmented_transforms
+from skimage.filters import median, gaussian
+from skimage.morphology import square 
 
 
 class ModelTrainer:
@@ -276,13 +278,14 @@ def create_model(encoder_name, architecture, n_channels, n_classes):
 
 
 class MultiChannelSegDataset(Dataset):
-    def __init__(self, data_dir, channels, transform=None, manual_annotation=True):
+    def __init__(self, data_dir, channels, transform_for_pred=None, transform_for_org=None, manual_annotation=True):
         """
         data_dir: root directory (e.g. "Training/")
         channels: list of substrings to identify each channel file (['DAPI','FITC','TRITC'])
         """
         self.data_dir = data_dir  # Store data_dir as an attribute
-        self.transform = transform
+        self.transform_for_pred = transform_for_pred
+        self.transform_for_org = transform_for_org
         self.channels = channels
         self.manual_annotation = manual_annotation
 
@@ -306,9 +309,9 @@ class MultiChannelSegDataset(Dataset):
                 print(f"[Skipping] no annotation for {sample_id}")
                 continue
 
-            microscope = parent.split(os.path.sep)[-4]  # Get microscope name from folder structure
-            species = parent.split(os.path.sep)[-3]      # Get species name from folder structure
-            genotype = parent.split(os.path.sep)[-2]           # Get genotype from sample ID
+            microscope = parent.split(os.path.sep)[-3]  # Get microscope name from folder structure
+            species = parent.split(os.path.sep)[-2]      # Get species name from folder structure
+            genotype = parent.split(os.path.sep)[-1]           # Get genotype from sample ID
 
             ann_path = os.path.join(parent, ann_file) if ann_file else None
             self.samples.append((root, ann_path, sample_id, microscope, species, genotype))
@@ -327,66 +330,44 @@ class MultiChannelSegDataset(Dataset):
                 'species': species,
                 'genotype': genotype
             }
-            image = self._load_image_stack(img_dir)         #  CxH×W float32
+            image_org = self._load_image_stack(img_dir)         #  CxH×W float32
 
-            mask = self._yolo_to_inner_outer_mask(ann_path, image.shape[:2]) if ann_path else None
+            # preprocess
+            image = self.preprocess(image_org)  # H,W,C float32 in [0,1]
 
-            if mask is not None:
-                # Apply transforms if provided
-                if self.transform:
-                    aug = self.transform(image=image, mask=mask)
-                    image, mask = aug['image'], aug['mask']
-                    mask = mask.permute(2, 0, 1)  # B,C,H,W
+            if self.manual_annotation is True:
+                mask = self._yolo_to_inner_outer_mask(ann_path, image_org.shape[:2]) if ann_path else None
+                aug = self.transform_for_pred(image=image, mask=mask)
+                image, mask = aug['image'], aug['mask']
+                mask = mask.permute(2, 0, 1)  # B,C,H,W
 
-                    # Ensure proper tensor format and contiguity
-                    if isinstance(image, torch.Tensor):
-                        image = image.clone().detach().contiguous()
-                    if isinstance(mask, torch.Tensor):
-                        mask = mask.clone().detach().contiguous()
+                aug_org = self.transform_for_org(image=image_org)
+                image_org = aug_org['image']
 
-                else:
-                    # If no transforms, manually resize and convert to tensor
-                    # Resize to consistent size
-                    image_resized = cv2.resize(image, (1024, 1024), interpolation=cv2.INTER_LINEAR)
-                    mask_resized = cv2.resize(mask, (1024, 1024), interpolation=cv2.INTER_NEAREST)
-                    
-                    # Normalize image
-                    image_resized = image_resized / 255.0  # Normalize to [0,1]
-                    # Apply ImageNet normalization
-                    mean = np.array([0.485, 0.456, 0.406])
-                    std = np.array([0.229, 0.224, 0.225])
-                    image_resized = (image_resized - mean) / std
-                    
-                    # Convert to tensors
-                    image = torch.from_numpy(image_resized.copy()).permute(2, 0, 1).float().contiguous()  # H,W,C -> C,H,W
-                    mask = torch.from_numpy(mask_resized.copy()).permute(2, 0, 1).float().contiguous()    # H,W,C -> C,H,W
-
-                return image, mask, meta_data
+                # Ensure proper tensor format and contiguity
+                if isinstance(image, torch.Tensor):
+                    image = image.clone().detach().contiguous()
+                if isinstance(mask, torch.Tensor):
+                    mask = mask.clone().detach().contiguous()
+                if isinstance(image_org, torch.Tensor):
+                    image_org = image_org.clone().detach().contiguous()
+                return image, mask, meta_data, image_org  # Return original image for debugging
+            
             else:
-                # Handle case with no mask
-                if self.transform:
-                    # Create a dummy mask for augmentation (will be ignored)
-                    dummy_mask = np.zeros((*image.shape[:2], 2), dtype=np.float32)
-                    aug = self.transform(image=image, mask=dummy_mask)
-                    image = aug['image']
-                    
-                    # Ensure proper tensor format and contiguity
-                    if isinstance(image, torch.Tensor):
-                        image = image.clone().detach().contiguous()
-                else:
-                    # Convert to tensor manually with consistent size
-                    image_resized = cv2.resize(image, (1024, 1024), interpolation=cv2.INTER_LINEAR)
-                    image_resized = image_resized / 255.0  # Normalize to [0,1]
-                    # Apply ImageNet normalization
-                    mean = np.array([0.485, 0.456, 0.406])
-                    std = np.array([0.229, 0.224, 0.225])
-                    image_resized = (image_resized - mean) / std
-                    image = torch.from_numpy(image_resized.copy()).permute(2, 0, 1).float().contiguous()
+                # Create a dummy mask for augmentation (will be ignored)
+                dummy_mask = np.zeros((*image.shape[:2], 2), dtype=np.float32)
+                aug = self.transform_for_pred(image=image, mask=dummy_mask)
+                image = aug['image']
 
+                aug_org = self.transform_for_org(image=image_org)
+                image_org = aug_org['image']
+
+                # Ensure proper tensor format and contiguity
+                if isinstance(image, torch.Tensor):
+                    image = image.clone().detach().contiguous()
                 # Verify tensor shape is correct
                 assert image.shape[1:] == (1024, 1024), f"Image shape mismatch: {image.shape}"
-
-                return image, meta_data
+                return image, meta_data, image_org  # No mask
 
         except Exception as e:
             print(f"Error loading sample {idx}: {e}")
@@ -405,16 +386,17 @@ class MultiChannelSegDataset(Dataset):
             img = cv2.imread(os.path.join(folder, fn), cv2.IMREAD_UNCHANGED)
             if img is None:
                 raise IOError(f"Failed to read {fn}")
-            
-            # Normalize to [0, 255] range if needed
+
+            # Ensure image is 8-bit float
             if img.dtype == np.uint16:
-                # Convert 16-bit to 8-bit by scaling
+                # Convert 16-bit to 8-bit by scaling, then to float32
                 img = (img / 256).astype(np.uint8)
             elif img.dtype != np.uint8:
-                # Scale to 0-255 range for other dtypes
+                # Scale to 0-255 range for other dtypes, then to float32
                 img = ((img - img.min()) / (img.max() - img.min()) * 255).astype(np.uint8)
-            
-            imgs.append(img.astype(np.float32))
+
+            img = img.astype(np.float32)  # Convert to 8-bit float (float32 in 0-255)
+            imgs.append(img)
         return np.stack(imgs, axis=-1)
 
     def _yolo_to_inner_outer_mask(self, ann_path, hw):
@@ -433,23 +415,45 @@ class MultiChannelSegDataset(Dataset):
                     for i in range(0, len(coords), 2)]
                 poly = np.array(pts, dtype=np.int32).reshape(-1,1,2)
                 if cls==1:
-                    cv2.fillPoly(outer, [poly], 1)
+                    cv2.fillPoly(outer, [poly], 255)
                 elif cls==0:
-                    cv2.fillPoly(inner, [poly], 1)
+                    cv2.fillPoly(inner, [poly], 255)
 
         # channel0 = inner; channel1 = outer - inner
-        outer_minus_inner = np.clip(outer.astype(int) - inner.astype(int), 0, 1).astype(np.uint8)
-        mask = np.stack([inner, outer_minus_inner], axis=-1).astype(np.float32)  # [H, W, C]
-        return mask  # Now returns [H, W, C]
+        outer_minus_inner = np.clip(outer.astype(int) - inner.astype(int), 0, 255).astype(np.uint8)
+        mask = np.stack([inner, outer_minus_inner], axis=-1).astype(np.float32) / 255.0  # [H, W, C], 8-bit float in [0,1]
+        return mask  # Now returns [H, W, C] as float32 in [0,1]
     
+    def preprocess(self, img):
+        preprocessed = []
+        for c in range(img.shape[-1]):
+            ch = img[..., c]
+            # 1. median filter
+            ch = median(ch, square(3))
+            # 2. gaussian blur
+            ch = gaussian(ch, sigma=1)
+            # 3. background subtraction
+            bg = gaussian(ch, sigma=50)
+            ch = np.clip(ch - bg, 0, None)
+            # 4. clip extreme values
+            p1, p99 = np.percentile(ch, [1, 99])
+            ch = np.clip(ch, p1, p99)
+            # 5. rescale to [0, 1]
+            ch = (ch - p1) / (p99 - p1)
+            # 6. scale to [0, 255] and convert to float32 (8-bit float)
+            ch = (ch * 255).astype(np.float32)
+            preprocessed.append(ch)
+        proc_stack = np.stack(preprocessed, axis=-1)  # H,W,C
+        return proc_stack
+        
     def get_debug_item(self, idx):
         img_dir, ann_path, sid = self.samples[idx]
         raw       = self._load_image_stack(img_dir)
         mask_raw  = self._yolo_to_inner_outer_mask(ann_path, raw.shape[:2]) if ann_path else None
         # preproc   = self.preprocess(raw)
 
-        if mask_raw is not None and self.transform:
-            aug = self.transform(image=raw, mask=mask_raw)
+        if mask_raw is not None and self.transform_for_pred:
+            aug = self.transform_for_pred(image=raw, mask=mask_raw)
             transformed     = aug['image']
             mask_transformed = aug['mask']
         else:
@@ -499,8 +503,6 @@ def monitor_gpu_memory():
     else:
         print("CUDA not available")
 
-
-
 def visualize_augmented(img, ax, channel_idx, mean=None, std=None):
     """
     img:   either a torch.Tensor (C,H,W) or a numpy array (H,W,C) in [0,1]
@@ -531,7 +533,7 @@ if __name__ == '__main__':
     data_dir = r'C:\Users\yifei\Documents\data_for_publication\test_preprocessed\C10\Sorghum'
     channels = ['DAPI', 'FITC', 'TRITC']
     transform = get_augmented_transforms()
-    dataset = MultiChannelSegDataset(data_dir, channels, transform=transform)
+    dataset = MultiChannelSegDataset(data_dir, channels, transform_for_pred=transform)
 
     # Create output folder for figures
     output_dir = r'C:\Users\yifei\Documents\debug_figures'

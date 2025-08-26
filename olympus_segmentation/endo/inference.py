@@ -5,12 +5,13 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from pathlib import Path
-
+import json  # Import here if not already imported at the top of the file
 # Import your custom modules
 from utils import MultiChannelSegDataset, create_model
-from transforms_for_hyper_training import get_val_transforms
+from transforms_for_hyper_training import get_val_transforms, get_org_transforms
 from loss_functions import DiceBCELoss
 from pathlib import Path
+import csv
 
 
 def load_model(checkpoint_path, device):
@@ -37,7 +38,7 @@ def load_model(checkpoint_path, device):
     return model
 
 
-def compute_metrics(preds, targets, threshold=0.99):
+def compute_metrics(preds, targets, threshold=0.5):
     """Compute segmentation metrics"""
     preds_binary = (preds > threshold).float()
     
@@ -71,7 +72,7 @@ def compute_metrics(preds, targets, threshold=0.99):
     }
 
 
-def save_predictions(imgs, probs, masks, sample_ids, output_dir, batch_idx):
+def save_predictions(imgs, probs, masks, sample_metadata, output_dir):
     """Save prediction overlay images"""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -82,7 +83,7 @@ def save_predictions(imgs, probs, masks, sample_ids, output_dir, batch_idx):
     masks_np = masks.cpu().numpy()
     
     for i in range(imgs.size(0)):
-        sample_id = sample_ids[i] if isinstance(sample_ids, (list, tuple)) else f"batch_{batch_idx}_sample_{i}"
+        sample_name = f"{sample_metadata['microscope'][i]}_{sample_metadata['species'][i]}_{sample_metadata['genotype'][i]}_{sample_metadata['sample_id'][i]}"
         
         # Create figure with input, prediction, ground truth, and overlay
         fig, axes = plt.subplots(1, 2, figsize=(16, 8))
@@ -102,9 +103,8 @@ def save_predictions(imgs, probs, masks, sample_ids, output_dir, batch_idx):
         axes[0].imshow(gt_overlay)
         axes[0].set_title('Ground Truth')
         axes[0].axis('off')
-
         # Prediction overlay
-        pred_binary = (probs_np[i] > 0.99).astype(np.uint8)
+        pred_binary = (probs_np[i] > 0.5).astype(np.uint8)
         pred_overlay = np.zeros((*pred_binary.shape[1:], 3), dtype=np.uint8)
         if pred_binary.shape[0] >= 2:
             pred_overlay[pred_binary[0] == 1] = [0, 0, 255]  # Blue for class 0
@@ -114,7 +114,7 @@ def save_predictions(imgs, probs, masks, sample_ids, output_dir, batch_idx):
         axes[1].axis('off')
 
         plt.subplots_adjust(wspace=0, hspace=0)
-        plt.savefig(output_dir / f'{sample_id}_masks.png', dpi=150, bbox_inches='tight', pad_inches=0)
+        plt.savefig(output_dir / f'{sample_name}_masks.png', dpi=150, bbox_inches='tight', pad_inches=0)
         plt.close()
 
         fig, axes = plt.subplots(1, 3, figsize=(16, 8))
@@ -137,15 +137,14 @@ def save_predictions(imgs, probs, masks, sample_ids, output_dir, batch_idx):
 
         # Remove gap between subplots and extra margins
         plt.subplots_adjust(wspace=0, hspace=0)
-        plt.savefig(output_dir / f'{sample_id}_overlay.png', dpi=150, bbox_inches='tight', pad_inches=0)
+        plt.savefig(output_dir / f'{sample_name}_overlay.png', dpi=150, bbox_inches='tight', pad_inches=0)
         plt.close()
 
 
-def run_inference(model, test_loader, device, save_images=False, output_dir=None):
-    """Run inference and compute metrics, saving per-image metrics to a JSON file if output_dir is provided."""
-    
-    import json  # Import here if not already imported at the top of the file
-
+def run_inference(model, test_loader, device, channels, save_images=False, output_dir=None):
+    """Run inference and compute metrics, saving per-image metrics to a JSON file if output_dir is provided.
+    Also saves average intensity under predicted mask for each channel of each image to a CSV.
+    """
     loss_fn = DiceBCELoss()
     all_metrics = {'dice': [], 'iou': [], 'precision': [], 'recall': [], 'f1': [], 'accuracy': []}
     total_loss = 0.0
@@ -153,72 +152,113 @@ def run_inference(model, test_loader, device, save_images=False, output_dir=None
 
     # To store per-image metrics
     all_sample_metrics = []
-    
+    # To store per-image, per-channel average intensity under predicted mask
+    avg_intensity_rows = []
+
     print("Running inference...")
-    
+
     with torch.no_grad():
         for batch_idx, batch in enumerate(tqdm(test_loader)):
-            
-            # Handle batch format
-            if len(batch) == 3:
-                imgs, masks, sample_ids = batch
-            else:
-                print("Skipping batch without masks")
-                continue
-                
-            imgs = imgs.to(device)
-            masks = masks.to(device)
-            
-            # Forward pass
-            logits = model(imgs)
-            probs = torch.sigmoid(logits)
-            
-            # # Save overlay images if requested
-            if save_images and output_dir:
-                save_predictions(imgs, probs, masks, sample_ids, output_dir, batch_idx)
-            
-            # Compute loss
-            loss = loss_fn(logits, masks)
-            total_loss += loss.item() * imgs.size(0)
-            num_samples += imgs.size(0)
-            
-            # Compute metrics for this batch
-            batch_metrics = compute_metrics(probs, masks)
-            
-            # Accumulate metrics across batches
-            for key in all_metrics:
-                all_metrics[key].extend(batch_metrics[key])
-            
-            # Save per-image metrics for this batch
+            if len(batch) == 4:
+                imgs, masks, sample_metadata, imgs_org = batch
+                imgs = imgs.to(device)
+                masks = masks.to(device)
+
+                # Forward pass
+                logits = model(imgs)
+                probs = torch.sigmoid(logits)
+
+                # # Save overlay images if requested
+                if save_images and output_dir:
+                    save_predictions(imgs, probs, masks, sample_metadata, output_dir)
+
+                # Compute loss
+                loss = loss_fn(logits, masks)
+                total_loss += loss.item() * imgs.size(0)
+                num_samples += imgs.size(0)
+
+                # Compute metrics for this batch
+                batch_metrics = compute_metrics(probs, masks)
+
+                # Accumulate metrics across batches
+                for key in all_metrics:
+                    all_metrics[key].extend(batch_metrics[key])
+
+                # Save per-image metrics for this batch
+                batch_size = imgs.size(0)
+                for i in range(batch_size):
+                    # Use provided sample_ids if available, else generate one
+                    sample_name = f"{sample_metadata['microscope'][i]}_{sample_metadata['species'][i]}_{sample_metadata['genotype'][i]}_{sample_metadata['sample_id'][i]}"
+                    image_metrics = {
+                        'sample_name': sample_name,
+                        'dice': batch_metrics['dice'][i],
+                        'iou': batch_metrics['iou'][i],
+                        'precision': batch_metrics['precision'][i],
+                        'recall': batch_metrics['recall'][i],
+                        'f1': batch_metrics['f1'][i],
+                        'accuracy': batch_metrics['accuracy'][i]
+                    }
+                    all_sample_metrics.append(image_metrics)
+
+            elif len(batch) == 3:
+                imgs, sample_metadata, imgs_org = batch
+                imgs = imgs.to(device)
+                # Create dummy masks if not available
+                masks = torch.zeros((imgs.size(0), 2, imgs.size(2), imgs.size(3)), device=device)
+
+                # Forward pass
+                logits = model(imgs)
+                probs = torch.sigmoid(logits)
+
+                # # Save overlay images if requested
+                if save_images and output_dir:
+                    save_predictions(imgs, probs, masks, sample_metadata, output_dir)
+
+            # Compute average intensity under predicted mask for each class separately
+            # imgs: (B, C, H, W), probs: (B, n_classes, H, W)
+            # For each class (assume 2 classes: 0 and 1)
             batch_size = imgs.size(0)
             for i in range(batch_size):
-                # Use provided sample_ids if available, else generate one
-                current_id = sample_ids[i] if isinstance(sample_ids, (list, tuple)) else f"batch_{batch_idx}_sample_{i}"
-                image_metrics = {
-                    'sample_id': current_id,
-                    'dice': batch_metrics['dice'][i],
-                    'iou': batch_metrics['iou'][i],
-                    'precision': batch_metrics['precision'][i],
-                    'recall': batch_metrics['recall'][i],
-                    'f1': batch_metrics['f1'][i],
-                    'accuracy': batch_metrics['accuracy'][i]
-                }
-                all_sample_metrics.append(image_metrics)
-    
+                for cls in range(probs.shape[1]):
+                    pred_mask = (probs[i, cls] > 0.5).cpu().numpy()  # shape (H, W)
+                    for ch in range(imgs_org.shape[1]):
+                        img_ch = imgs_org[i, ch].cpu().numpy()
+                        if pred_mask.sum() > 0:
+                            avg_intensity = float(img_ch[pred_mask > 0].mean())
+                        else:
+                            avg_intensity = float('nan')
+                        class_name = 'vascular' if cls == 0 else 'endo'
+                        channel_name = channels[ch] if ch < len(channels) else f"channel_{ch}"
+                        sample_name = f"{sample_metadata['microscope'][i]}_{sample_metadata['species'][i]}_{sample_metadata['genotype'][i]}_{sample_metadata['sample_id'][i]}"
+                        avg_intensity_rows.append({
+                            'sample_name': sample_name,
+                            'class': class_name,
+                            'channel': channel_name,
+                            'avg_intensity_under_pred_mask': avg_intensity
+                        })
+
     # Calculate final averages
-    avg_loss = total_loss / num_samples if num_samples > 0 else 0
-    final_metrics = {key: np.mean(values) for key, values in all_metrics.items()}
-    
-    # Save per-image metrics to a JSON file if output_dir is provided
-    if output_dir:
+    if len(all_sample_metrics) > 0:
+        avg_loss = total_loss / num_samples if num_samples > 0 else 0
+        final_metrics = {key: np.mean(values) for key, values in all_metrics.items()}
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         metrics_json_path = output_dir / "image_metrics.json"
         with open(metrics_json_path, "w") as f:
             json.dump(all_sample_metrics, f, indent=4, default=lambda o: float(o) if isinstance(o, np.float32) else o)
-        print(f"Per-image metrics saved to: {metrics_json_path}")
-    
-    return avg_loss, final_metrics
+        # Print results
+        print_results(avg_loss, final_metrics)
+
+    # Save average intensity under predicted mask to CSV
+    output_dir = Path(output_dir)
+    intensity_csv_path = output_dir / "avg_intensity_under_pred_mask.csv"
+    with open(intensity_csv_path, "w", newline="") as csvfile:
+        fieldnames = ['sample_name', 'class', 'channel', 'avg_intensity_under_pred_mask']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in avg_intensity_rows:
+            writer.writerow(row)
+    print(f"Average intensity under predicted mask saved to: {intensity_csv_path}")
 
 
 def print_results(avg_loss, metrics):
@@ -240,14 +280,15 @@ def main():
     """Main inference function"""
     
     # MODIFY THESE PATHS
-    checkpoint_path = r"C:\Users\yifei\Documents\data_for_publication\results\models\Unet_resnet34_2025_08_05_trained_without_channel_dropout\best_model_loss_0.1219_dice_0.9184_epoch_202.pth"
-    test_data_dir = r"C:\Users\yifei\Documents\data_for_publication\test_preprocessed\Zeiss"
-    output_dir = r"C:\Users\yifei\Documents\data_for_publication\results\inference_overlays"
+    checkpoint_path = r"C:\Users\yifei\Documents\data_for_publication\train_on_sorghum_and_rice\results\models\Unet_resnet34_2025_08_05_trained_without_channel_dropout\continued_training\continued_best_model_loss_0.1026_dice_0.9189_epoch_247.pth"
+    test_data_dir = r"C:\Users\yifei\Documents\data_for_publication\train_on_sorghum_and_rice\test"
+    output_dir = r"C:\Users\yifei\Documents\data_for_publication\train_on_sorghum_and_rice\results\inference_overlays"
 
     # Configuration
     channels = ['DAPI', 'FITC', 'TRITC']
     batch_size = 4
     save_overlay_images = True  # Set to False if you don't want to save images
+    manual_annotation = True  # Set to True if test data has manual annotations for metrics
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     print(f"Using device: {device}")
@@ -259,8 +300,9 @@ def main():
     test_dataset = MultiChannelSegDataset(
         test_data_dir,
         channels,
-        transform=get_val_transforms(),
-        manual_annotation=True
+        transform_for_pred=get_val_transforms(),
+        transform_for_org=get_org_transforms(),
+        manual_annotation=manual_annotation
     )
     
     test_loader = DataLoader(
@@ -268,24 +310,17 @@ def main():
         batch_size=batch_size,
         shuffle=False,
         num_workers=4,
-        pin_memory=True
     )
     
     print(f"Test dataset: {len(test_dataset)} samples")
     
     # Run inference
-    avg_loss, metrics = run_inference(
+    run_inference(
         model, test_loader, device, 
+        channels=channels,
         save_images=save_overlay_images, 
-        output_dir=output_dir if save_overlay_images else None
+        output_dir=output_dir
     )
-    
-    # Print results
-    print_results(avg_loss, metrics)
-    
-    if save_overlay_images:
-        print(f"\nOverlay images saved to: {output_dir}")
-        print(f"Generated {len(test_dataset)} overlay images")
 
 
 if __name__ == "__main__":
