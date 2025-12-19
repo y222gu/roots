@@ -10,6 +10,7 @@ def find_channel_images(sample_dir):
     Find all channel images in a sample directory.
     Returns a dictionary with channel names as keys.
     Handles various naming conventions including CH(NAME) format.
+    Treats FITC and GFP as interchangeable (both map to 'FITC' key).
     """
     channels = {}
     
@@ -20,7 +21,7 @@ def find_channel_images(sample_dir):
     print(f"  Found .tif files: {tif_files}")
     
     # Match files to channels - check in priority order to avoid conflicts
-    # Priority: More specific patterns first (CH(DAPI)) before generic ones (CH1)
+    # IMPORTANT: Check FITC/GFP BEFORE TRITC to avoid assigning FITC files to TRITC
     
     # DAPI channel
     for tif_file in tif_files:
@@ -29,19 +30,20 @@ def find_channel_images(sample_dir):
                 channels['DAPI'] = os.path.join(sample_dir, tif_file)
                 print(f"    Matched '{tif_file}' -> DAPI")
     
-    # TRITC channel
+    # GFP/FITC channel (green fluorescence) - CHECK THIS BEFORE TRITC
+    # Map both FITC and GFP to 'FITC' key for consistency
     for tif_file in tif_files:
-        if 'CH(TRITC)' in tif_file or 'TRITC' in tif_file or tif_file.endswith('_CH2.ome.tif'):
+        if 'CH(FITC)' in tif_file or 'CH(GFP)' in tif_file or 'FITC' in tif_file or 'GFP' in tif_file or tif_file.endswith('_CH2.ome.tif'):
+            if 'FITC' not in channels:
+                channels['FITC'] = os.path.join(sample_dir, tif_file)
+                print(f"    Matched '{tif_file}' -> FITC (GFP-compatible)")
+    
+    # TRITC channel (red fluorescence) - only match explicit TRITC labels
+    for tif_file in tif_files:
+        if 'CH(TRITC)' in tif_file or 'TRITC' in tif_file or tif_file.endswith('_CH3.ome.tif'):
             if 'TRITC' not in channels:
                 channels['TRITC'] = os.path.join(sample_dir, tif_file)
                 print(f"    Matched '{tif_file}' -> TRITC")
-    
-    # GFP channel (FITC is also green fluorescence)
-    for tif_file in tif_files:
-        if 'CH(FITC)' in tif_file or 'CH(GFP)' in tif_file or 'FITC' in tif_file or 'GFP' in tif_file or tif_file.endswith('_CH3.ome.tif'):
-            if 'GFP' not in channels:
-                channels['GFP'] = os.path.join(sample_dir, tif_file)
-                print(f"    Matched '{tif_file}' -> GFP")
     
     return channels
 
@@ -149,8 +151,19 @@ def preprocess_projection(img,
     
     # Step 4: Contrast enhancement via PIL (per-channel or global)
     # Determine which contrast factor to use
-    if per_channel_contrast and channel_name and channel_name in per_channel_contrast:
-        contrast_factor = per_channel_contrast[channel_name]
+    # Support both FITC and GFP keys in per_channel_contrast
+    if per_channel_contrast and channel_name:
+        # Try exact match first
+        if channel_name in per_channel_contrast:
+            contrast_factor = per_channel_contrast[channel_name]
+        # If channel is FITC, also try GFP
+        elif channel_name == 'FITC' and 'GFP' in per_channel_contrast:
+            contrast_factor = per_channel_contrast['GFP']
+        # If channel is GFP, also try FITC
+        elif channel_name == 'GFP' and 'FITC' in per_channel_contrast:
+            contrast_factor = per_channel_contrast['FITC']
+        else:
+            contrast_factor = contrast_enhancement
     else:
         contrast_factor = contrast_enhancement
     
@@ -171,16 +184,19 @@ def create_composite_image(channels_dict, output_path, channel_colors=None, chan
                           preprocess_params=None, per_channel_contrast=None):
     """
     Create a colored composite image from selected channels and save as TIFF.
+    Handles FITC/GFP interchangeably.
     
     Args:
         per_channel_contrast: Dictionary mapping channel names to contrast enhancement factors
-                            e.g., {'DAPI': 1.1, 'GFP': 1.3, 'TRITC': 1.2}
+                            e.g., {'DAPI': 1.1, 'FITC': 1.3, 'TRITC': 1.2}
+                            Note: Both 'FITC' and 'GFP' keys are supported
     """
-    # Default color mapping
+    # Default color mapping (supports both FITC and GFP)
     if channel_colors is None:
         channel_colors = {
             'DAPI': 'blue',
-            'GFP': 'green',
+            'FITC': 'green',
+            'GFP': 'green',  # Same as FITC
             'TRITC': 'red'
         }
 
@@ -194,8 +210,20 @@ def create_composite_image(channels_dict, output_path, channel_colors=None, chan
         }
 
     # Filter channels if specific ones are requested
+    # Handle both FITC and GFP in channels_to_use
     if channels_to_use is not None:
-        channels_dict = {k: v for k, v in channels_dict.items() if k in channels_to_use}
+        # Normalize channels_to_use to support both FITC and GFP
+        normalized_channels_to_use = set()
+        for ch in channels_to_use:
+            normalized_channels_to_use.add(ch)
+            # If user specifies GFP, also accept FITC
+            if ch == 'GFP':
+                normalized_channels_to_use.add('FITC')
+            # If user specifies FITC, also accept GFP
+            elif ch == 'FITC':
+                normalized_channels_to_use.add('GFP')
+        
+        channels_dict = {k: v for k, v in channels_dict.items() if k in normalized_channels_to_use}
         print(f"  Using only channels: {list(channels_dict.keys())}")
 
     # Define color to RGB channel mapping
@@ -278,7 +306,17 @@ def create_composite_image(channels_dict, output_path, channel_colors=None, chan
 
     # Assign each channel to its corresponding color
     for channel_name in projections_norm:
-        color_name = channel_colors.get(channel_name, 'gray')
+        # Support both FITC and GFP in color lookup
+        color_name = channel_colors.get(channel_name)
+        if color_name is None:
+            # If exact match not found, try alternative
+            if channel_name == 'FITC' and 'GFP' in channel_colors:
+                color_name = channel_colors['GFP']
+            elif channel_name == 'GFP' and 'FITC' in channel_colors:
+                color_name = channel_colors['FITC']
+            else:
+                color_name = 'gray'
+        
         color_multipliers = color_to_rgb.get(color_name, [1, 1, 1])
 
         # Add this channel's contribution to RGB
@@ -310,6 +348,7 @@ def process_directory(input_dir, output_dir, channel_colors=None, channels_to_us
     
     Args:
         per_channel_contrast: Dictionary mapping channel names to contrast enhancement factors
+                            Note: Both 'FITC' and 'GFP' keys are supported
     """
     input_path = Path(input_dir)
     output_path = Path(output_dir)
@@ -354,17 +393,20 @@ def process_directory(input_dir, output_dir, channel_colors=None, channels_to_us
 
 if __name__ == "__main__":
     # Set your input and output directories
-    input_directory = r'/Users/yifeigu/Library/CloudStorage/Box-Box/Carney Lab Shared/Projects/ROOTS-ProjectFolder/yifei/data_for_publication/cropped_roots'
-    output_directory = r'/Users/yifeigu/Library/CloudStorage/Box-Box/Carney Lab Shared/Projects/ROOTS-ProjectFolder/yifei/data_for_publication/cropped_roots_colored'
-    
+    input_directory = r'C:\Users\Yifei\Box\Carney Lab Shared\Projects\ROOTS-ProjectFolder\yifei\data_for_publication\temp_cropped'
+    output_directory = r'C:\Users\Yifei\Box\Carney Lab Shared\Projects\ROOTS-ProjectFolder\yifei\data_for_publication\temp_cropped_colored'
+
     # Color assignment for all channels
+    # Both FITC and GFP are supported and map to the same color
     channel_colors = {
         'DAPI': 'blue',
-        'GFP': 'yellow',
-        'TRITC': 'magenta',
+        'FITC': 'yellow',     # Works with both FITC and GFP files
+        'GFP': 'yellow',      # Explicit GFP mapping (same as FITC)
+        'TRITC': 'red'
     }
     
-    channels_to_use = ['DAPI', 'GFP', 'TRITC']  # Only use DAPI, GFP, and TRITC channels
+    # Can specify either FITC or GFP - both will work
+    channels_to_use = ['DAPI', 'FITC']  # Will also accept GFP-named files
     
     # FAST preprocessing - only essential steps
     preprocess_params = {
@@ -375,10 +417,12 @@ if __name__ == "__main__":
     }
 
     # Define separate contrast enhancement factors for each channel
+    # Both FITC and GFP keys are supported
     per_channel_contrast = {
         'DAPI': 1.5,      # Lower enhancement for DAPI
-        'GFP': 0.8,       # Higher enhancement for GFP
-        'TRITC': 1.5      # Medium enhancement for TRITC
+        'FITC': 1,      # Enhancement for FITC (also applies to GFP)
+        'GFP': 1,       # Same as FITC
+        'TRITC': 1.1      # Medium enhancement for TRITC
     }
 
     print(f"Starting processing...")
